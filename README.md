@@ -4,7 +4,30 @@ A local macOS screen recorder and video editor. Record your screen and webcam,
 edit them on one timeline, then export a finished composition or separate,
 synchronized videos.
 
-[Download for macOS](https://github.com/vinipace/open-record-studio/releases) · [Install](docs/install.md) · [Editor guide](docs/guide.md) · [MCP setup](docs/mcp.md) · [MIT license](LICENSE)
+[Download for macOS](https://github.com/vinipace/open-record-studio/releases/download/v0.1.0/Open-Record-Studio-0.1.0-macOS-arm64.dmg) · [Homebrew](#homebrew) · [All releases](https://github.com/vinipace/open-record-studio/releases) · [Editor guide](docs/guide.md) · [MCP setup](docs/mcp.md) · [MIT license](LICENSE)
+
+## Download and install
+
+**Apple silicon (M1 or later) · macOS 15+**. No Node.js or source build is needed.
+
+### Homebrew
+
+```sh
+brew tap vinipace/open-record-studio https://github.com/vinipace/open-record-studio
+brew install --cask vinipace/open-record-studio/open-record-studio
+```
+
+This installs the app and its FFmpeg media tools automatically.
+
+### Direct download
+
+1. **[Download the DMG](https://github.com/vinipace/open-record-studio/releases/download/v0.1.0/Open-Record-Studio-0.1.0-macOS-arm64.dmg)** and drag **Open Record Studio** into **Applications**. A [ZIP download](https://github.com/vinipace/open-record-studio/releases/download/v0.1.0/Open-Record-Studio-0.1.0-macOS-arm64.zip) is also available.
+2. Install the media tools with [Homebrew](https://brew.sh): `brew install ffmpeg`.
+3. Open **Open Record Studio** from Applications.
+
+The current preview is Developer ID signed but **not yet notarized by Apple**.
+macOS may block its first launch; see the [installation guide](docs/install.md)
+for first-launch help, updates, and checksum verification.
 
 ![Open Record Studio editor with a screen recording, rounded webcam overlay, audio waveform, and zoom timeline](docs/screenshots/editor.jpg)
 
@@ -22,49 +45,6 @@ synchronized videos.
   ratios and social presets, and export MP4 or GIF without uploading your media.
 - **Edit through MCP.** Query projects and interaction timestamps, get preview
   images, change cuts and zooms, and start or cancel renders from an MCP client.
-
-## Get started
-
-**Download the app:** get the DMG or ZIP from [Releases](https://github.com/vinipace/open-record-studio/releases).
-Drag the app into Applications and install the media tools with `brew install ffmpeg`.
-No Node.js or source build is needed. The first release is a signed, unnotarized
-preview for Apple silicon Macs running macOS 15+. See [installation instructions](docs/install.md),
-including Homebrew installation and current private-repository download access.
-
-### Build from source
-
-The current build targets **Apple silicon Macs**. Screen recording with interaction
-tracking requires **macOS 15 or later**. Use Node.js 24, npm, Xcode command-line
-tools, and separately installed FFmpeg/ffprobe.
-
-```sh
-git clone https://github.com/vinipace/open-record-studio.git
-cd open-record-studio
-brew install ffmpeg
-npm ci
-npm start
-```
-
-`npm start` builds the native helpers and frontend, then opens the editor. Choose
-**Explore a sample project** to try it with generated media, **Record** to capture,
-or **Use video or image** to import a file.
-
-Choose a projects folder once. New recordings are named automatically; double-click
-a project's title to rename it. macOS requests the recording and device access
-needed for the inputs you select. Interaction tracking requires Accessibility and
-Input Monitoring access.
-
-To build the `.app` locally:
-
-```sh
-npm run package
-open "release/Open Record Studio.app"
-```
-
-Packaging uses an available Developer ID or an ad-hoc signature. Downloadable
-releases require Developer ID signing; the release command supports notarization
-with a saved Apple Keychain profile. See [distribution notes](docs/distribution.md)
-for signing, third-party notices, and release requirements.
 
 ## Your webcam, your framing
 
@@ -109,11 +89,50 @@ saved `.framestudio` projects; the desktop app does not need to be open.
 
 ## Development and documentation
 
+### Build from source
+
+The current build targets **Apple silicon Macs**. Screen recording with interaction
+tracking requires **macOS 15 or later**. Use Node.js 24, npm, Xcode command-line
+tools, and separately installed FFmpeg/ffprobe.
+
+```sh
+git clone https://github.com/vinipace/open-record-studio.git
+cd open-record-studio
+brew install ffmpeg
+npm ci
+npm start
+```
+
+`npm start` builds the native helpers and frontend, then opens the editor. Choose
+**Explore a sample project** to try it with generated media, **Record** to capture,
+or **Use video or image** to import a file.
+
+Choose a projects folder once. New recordings are named automatically; double-click
+a project's title to rename it. macOS requests the recording and device access
+needed for the inputs you select. Interaction tracking requires Accessibility and
+Input Monitoring access.
+
+To build the `.app` locally:
+
+```sh
+npm run package
+open "release/Open Record Studio.app"
+```
+
+Packaging uses an available Developer ID or an ad-hoc signature. Downloadable
+releases require Developer ID signing; the release command supports notarization
+with a saved Apple Keychain profile. See [distribution notes](docs/distribution.md)
+for signing, third-party notices, and release requirements.
+
+### Checks
+
 ```sh
 npm run typecheck
 npm run build
 npm test
 ```
+
+### Documentation
 
 - [Editor guide](docs/guide.md): recording, media layers, timeline, zooms, audio,
   exports, shortcuts, and project format.
