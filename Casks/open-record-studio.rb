@@ -1,6 +1,6 @@
 cask "open-record-studio" do
-  version "0.1.0"
-  sha256 "530bccc5534b737b15ffaa6fe4be857a98c46d7fe95e4e6d4168704207bafdeb"
+  version "0.2.0"
+  sha256 "3411c510a368301e6b6b300548007e87c160d7d62fa4858541608a7d860e2b3a"
 
   url "https://github.com/vinipace/open-record-studio/releases/download/v#{version}/Open-Record-Studio-#{version}-macOS-arm64.dmg"
   name "Open Record Studio"
@@ -12,6 +12,7 @@ cask "open-record-studio" do
   depends_on arch: :arm64
 
   app "Open Record Studio.app"
+  binary "#{appdir}/Open Record Studio.app/Contents/Resources/bin/open-record-studio-mcp"
 
   caveats "This preview is signed but not notarized. macOS may block its first launch."
 end
