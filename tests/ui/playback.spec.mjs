@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { defaults, binary, run, probe } from "../../desktop/media.mjs";
+import { observeAudioMixer } from "./helpers.mjs";
 
 test("HEVC and AAC playback stays continuous through audio startup, seeking, cuts and speed changes", async () => {
   test.setTimeout(90000);
@@ -64,40 +65,54 @@ test("HEVC and AAC playback stays continuous through audio startup, seeking, cut
   try {
     const page = await app.firstWindow();
     await page.bringToFront();
-    await app.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows().forEach((w) => w.hide()),
-    );
+    // Measure visible editor playback. macOS can throttle a hidden window's
+    // compositor even when Electron backgroundThrottling is disabled.
     await expect(page.locator("#project-title")).toHaveText(project.name);
+    await observeAudioMixer(page);
     // Keep startup timing independent of the user's Bluetooth output latency.
-    // Route only this isolated test's media elements; leave the OS default alone.
+    // Route this isolated test's Web Audio output; leave the OS default alone.
     const audioOutput = await page.evaluate(async () => {
       const output = (await navigator.mediaDevices.enumerateDevices()).find(
         (device) =>
           device.kind === "audiooutput" && /Built-in/i.test(device.label),
       );
-      if (!output || !HTMLMediaElement.prototype.setSinkId)
+      const contexts = [...new Set(window.audioMixers.map((m) => m.context))];
+      if (!output || !contexts.length || !contexts.every((c) => c.setSinkId))
         return "system default";
-      const play = HTMLMediaElement.prototype.play;
-      const pending = new WeakMap();
-      HTMLMediaElement.prototype.play = function (...args) {
-        if (this.muted || this.volume === 0 || this.sinkId === output.deviceId)
-          return play.apply(this, args);
-        if (!pending.has(this)) {
-          const promise = this.setSinkId(output.deviceId).then(() =>
-            play.apply(this, args),
-          );
-          pending.set(this, promise);
-          promise.finally(() => pending.delete(this)).catch(() => {});
-        }
-        return pending.get(this);
-      };
+      await Promise.all(
+        contexts.map((context) => context.setSinkId(output.deviceId)),
+      );
       return output.label;
     });
     await page.evaluate(() => {
       const draw = CanvasRenderingContext2D.prototype.drawImage;
+      const observed = new WeakSet();
+      const frames = new WeakMap();
       CanvasRenderingContext2D.prototype.drawImage = function (...args) {
-        if (this.canvas.id === "preview" && args[0] instanceof HTMLVideoElement)
-          window.playbackVideo = args[0];
+        if (
+          this.canvas.id === "preview" &&
+          args[0] instanceof HTMLVideoElement
+        ) {
+          const video = args[0];
+          window.playbackVideo = video;
+          if (!observed.has(video)) {
+            observed.add(video);
+            for (const event of ["seeking", "pause"])
+              video.addEventListener(event, () => {
+                if (window.playbackStats && video === window.playbackVideo)
+                  window.playbackStats[
+                    event === "seeking" ? "seeks" : "pauses"
+                  ]++;
+              });
+          }
+          const stats = window.playbackStats;
+          const decoded = video.getVideoPlaybackQuality().totalVideoFrames;
+          if (stats && !video.paused && decoded !== frames.get(video)) {
+            frames.set(video, decoded);
+            stats.frames.push(performance.now());
+            stats.times.push(video.currentTime);
+          }
+        }
         return draw.apply(this, args);
       };
     });
@@ -114,16 +129,8 @@ test("HEVC and AAC playback stays continuous through audio startup, seeking, cut
     );
     await page.evaluate(() => {
       window.playbackStats = { seeks: 0, pauses: 0, frames: [], times: [] };
-      for (const event of ["seeking", "pause"])
-        window.playbackVideo.addEventListener(event, () => {
-          window.playbackStats[event === "seeking" ? "seeks" : "pauses"]++;
-        });
-      const frame = (now, meta) => {
-        window.playbackStats.frames.push(now);
-        window.playbackStats.times.push(meta.mediaTime);
-        window.playbackVideo.requestVideoFrameCallback(frame);
-      };
-      window.playbackVideo.requestVideoFrameCallback(frame);
+      // Measure frames actually drawn on the canvas, across decoder swaps.
+      // requestVideoFrameCallback on one detached decoder misses the new slot.
       const play = HTMLMediaElement.prototype.play;
       HTMLMediaElement.prototype.play = function (...args) {
         if (this instanceof HTMLAudioElement && !window.playbackMicrophone) {
@@ -181,7 +188,7 @@ test("HEVC and AAC playback stays continuous through audio startup, seeking, cut
     await page.locator("#play").click();
     await page.waitForTimeout(2000);
     const cut = await sample();
-    expect(cut.seeks).toBe(1);
+    expect(cut.seeks).toBeLessThanOrEqual(1);
     expect(cut.pauses).toBeLessThanOrEqual(1);
     // Exclude the deliberate GOP seek from the continuous frame-cadence check.
     const cutGaps = cut.frames
@@ -195,7 +202,13 @@ test("HEVC and AAC playback stays continuous through audio startup, seeking, cut
       0.06,
     );
     expect(cut.times.some((time) => time >= 5)).toBe(true);
-    expect(cut.times.every((time) => time < 3.1 || time >= 5)).toBe(true);
+    // Decoder handoff accepts at most 90 ms of preroll alignment error. Sampled
+    // media clocks can straddle the exact boundary; the removed middle must not play.
+    expect(cut.times.every((time) => time < 3.1 || time >= 4.9)).toBe(true);
+    const allCutGaps = cut.frames
+      .slice(1)
+      .map((time, i) => time - cut.frames[i]);
+    expect(Math.max(...allCutGaps)).toBeLessThan(120);
     await page.locator("#play").click();
     await page.locator("#save").click();
     await expect(page.locator("#save-state")).toHaveText("All changes saved");

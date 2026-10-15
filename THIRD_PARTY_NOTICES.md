@@ -17,7 +17,7 @@ Source: https://github.com/electron/electron
 
 ## MCP companion
 
-The MCP companion runs from the source checkout. Its production dependencies are
+The MCP companion is bundled in the app and can also run from source. Its production dependencies are
 listed in `package-lock.json`; their original license/notice files are retained
 by npm and also included in the app's acknowledgements for convenience.
 

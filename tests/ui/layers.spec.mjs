@@ -4,6 +4,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { layersFixture } from "../layers-fixture.mjs";
 import { probe } from "../../desktop/media.mjs";
+import { observeAudioMixer } from "./helpers.mjs";
 
 test("add multiple canvas media, arrange, trim, undo, play, save/reopen and export", async () => {
   test.setTimeout(120000);
@@ -65,6 +66,7 @@ test("add multiple canvas media, arrange, trim, undo, play, save/reopen and expo
   };
   try {
     await launch();
+    await observeAudioMixer(page);
     // Preserve an unsaved canvas change while importing into the existing project.
     await page.locator('[data-ratio="1:1"]').click();
     await app.evaluate(
@@ -97,7 +99,13 @@ test("add multiple canvas media, arrange, trim, undo, play, save/reopen and expo
       .toBe(1);
     expect(
       await page.evaluate(() =>
-        window.layerVideos.every((v) => v.muted && v.paused),
+        window.layerVideos.every(
+          (v) =>
+            v.paused &&
+            window.audioMixers.some(
+              (m) => m.element === v && m.gain.value === 0,
+            ),
+        ),
       ),
     ).toBe(true);
     await page.locator("#layer-back").click();

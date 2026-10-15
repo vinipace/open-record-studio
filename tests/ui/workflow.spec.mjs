@@ -1,3 +1,4 @@
+import { openRecordingDialog } from "./helpers.mjs";
 import { test, expect, _electron as electron } from "@playwright/test";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -602,7 +603,7 @@ test("failed source refresh cannot start a stale recording", async () => {
       },
     ];
   });
-  await page.locator("#new-recording").click();
+  await openRecordingDialog(page);
   await expect(page.locator("#start-record")).toBeEnabled();
   await page.locator("#record-dialog .close-dialog").click();
   await application.evaluate(({ desktopCapturer }) => {
@@ -610,7 +611,7 @@ test("failed source refresh cannot start a stale recording", async () => {
       throw new Error("Capture permission unavailable in test");
     };
   });
-  await page.locator("#new-recording").click();
+  await openRecordingDialog(page);
   await expect(page.locator("#source-list")).toContainText(
     "Screen sources unavailable",
   );

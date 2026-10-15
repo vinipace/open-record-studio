@@ -1,3 +1,4 @@
+import { openRecordingDialog } from "./helpers.mjs";
 import { test, expect, _electron as electron } from "@playwright/test";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -73,7 +74,7 @@ test("text-tracking access is mandatory and silent native clicks still produce z
     await page.evaluate(() => {
       navigator.mediaDevices.enumerateDevices = async () => [];
     });
-    await page.locator("#new-recording").click();
+    await openRecordingDialog(page);
     await expect(page.locator("#interaction-access-status")).toContainText(
       "Text tracking needs access",
     );
@@ -97,13 +98,17 @@ test("text-tracking access is mandatory and silent native clicks still produce z
     };
     await fs.writeFile(file, JSON.stringify(fixture));
     await page.locator("#record-dialog .close-dialog").click();
-    await page.locator("#new-recording").click();
+    await openRecordingDialog(page);
     await expect(page.locator("#start-record")).toBeEnabled();
     await expect(page.locator("#interaction-enable")).toBeHidden();
     // Revocation between dialog and Start is checked again, before allocation.
     fixture.interactions.permissions.inputMonitoring = false;
     await fs.writeFile(file, JSON.stringify(fixture));
     await page.locator("#start-record").click();
+    // Wait for the new access check to finish, not the previous hidden label or
+    // the temporary disabled state while the helper is still reading the file.
+    await expect(page.locator(".interaction-setup")).toBeVisible();
+    await expect(page.locator("#interaction-enable")).toBeEnabled();
     await expect(page.locator("#interaction-access-status")).toContainText(
       "Text tracking needs access",
     );
@@ -112,7 +117,7 @@ test("text-tracking access is mandatory and silent native clicks still produce z
     fixture.interactions.permissions.inputMonitoring = true;
     await fs.writeFile(file, JSON.stringify(fixture));
     await page.locator("#record-dialog .close-dialog").click();
-    await page.locator("#new-recording").click();
+    await openRecordingDialog(page);
     await expect(page.locator("#start-record")).toBeEnabled();
     // Permissions alone are insufficient if the actual capture listener fails.
     fixture.interactions.capabilities.typing = false;

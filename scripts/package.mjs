@@ -6,6 +6,7 @@ import { createPackage } from "@electron/asar";
 import { sign } from "@electron/osx-sign";
 import { writeLicenseBundle, verifyLicenseBundle } from "./licenses.mjs";
 import { productName, bundleIdentifier } from "../desktop/app-identity.mjs";
+import { writeMcpBundle, verifyMcpBundle } from "./mcp-bundle.mjs";
 
 execFileSync(process.execPath, ["scripts/build-native.mjs"], {
   stdio: "inherit",
@@ -76,6 +77,8 @@ for (const helper of ["frame-capture", "frame-cursor", "frame-render"])
     path.join(root, "native/bin", helper),
     path.join(target, "Contents/Resources", helper),
   );
+await writeMcpBundle(root, path.join(target, "Contents/Resources"));
+await verifyMcpBundle(root, path.join(target, "Contents/Resources"));
 const plist = path.join(target, "Contents/Info.plist");
 for (const [key, value] of Object.entries({
   CFBundleDisplayName: productName,
@@ -83,7 +86,7 @@ for (const [key, value] of Object.entries({
   CFBundleName: productName,
   CFBundleIdentifier: bundleIdentifier,
   CFBundleShortVersionString: pkg.version,
-  CFBundleVersion: "1",
+  CFBundleVersion: pkg.version,
   LSMinimumSystemVersion: "15.0",
   NSCameraUsageDescription:
     "Record your webcam on its own editable video track.",

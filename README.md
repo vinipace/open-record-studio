@@ -4,7 +4,7 @@ A local macOS screen recorder and video editor. Record your screen and webcam,
 edit them on one timeline, then export a finished composition or separate,
 synchronized videos.
 
-[Download for macOS](https://github.com/vinipace/open-record-studio/releases/download/v0.1.0/Open-Record-Studio-0.1.0-macOS-arm64.dmg) · [Homebrew](#homebrew) · [All releases](https://github.com/vinipace/open-record-studio/releases) · [Editor guide](docs/guide.md) · [MCP setup](docs/mcp.md) · [MIT license](LICENSE)
+[Download for macOS](https://github.com/vinipace/open-record-studio/releases/download/v0.2.0/Open-Record-Studio-0.2.0-macOS-arm64.dmg) · [Homebrew](#homebrew) · [All releases](https://github.com/vinipace/open-record-studio/releases) · [Editor guide](docs/guide.md) · [MCP setup](docs/mcp.md) · [MIT license](LICENSE)
 
 ## Download and install
 
@@ -17,11 +17,11 @@ brew tap vinipace/open-record-studio https://github.com/vinipace/open-record-stu
 brew install --cask vinipace/open-record-studio/open-record-studio
 ```
 
-This installs the app and its FFmpeg media tools automatically.
+This installs the app, its FFmpeg media tools, and the `open-record-studio-mcp` command.
 
 ### Direct download
 
-1. **[Download the DMG](https://github.com/vinipace/open-record-studio/releases/download/v0.1.0/Open-Record-Studio-0.1.0-macOS-arm64.dmg)** and drag **Open Record Studio** into **Applications**. A [ZIP download](https://github.com/vinipace/open-record-studio/releases/download/v0.1.0/Open-Record-Studio-0.1.0-macOS-arm64.zip) is also available.
+1. **[Download the DMG](https://github.com/vinipace/open-record-studio/releases/download/v0.2.0/Open-Record-Studio-0.2.0-macOS-arm64.dmg)** and drag **Open Record Studio** into **Applications**. A [ZIP download](https://github.com/vinipace/open-record-studio/releases/download/v0.2.0/Open-Record-Studio-0.2.0-macOS-arm64.zip) is also available.
 2. Install the media tools with [Homebrew](https://brew.sh): `brew install ffmpeg`.
 3. Open **Open Record Studio** from Applications.
 
@@ -80,12 +80,16 @@ interactions, previewing frames, editing cuts and zooms, changing style, and
 rendering. Batch edits support validation without saving and revision checks to
 avoid overwriting newer changes.
 
+**Included in the app—no Node.js or source checkout required.** Choose
+**Open Record Studio → Copy MCP configuration** from the macOS menu bar, then
+paste it into your MCP client. With Homebrew, you can also run:
+
 ```sh
-npm run --silent mcp
+open-record-studio-mcp --print-config
 ```
 
-Connect your client with the [MCP setup guide](docs/mcp.md). The server works on
-saved `.framestudio` projects; the desktop app does not need to be open.
+See the [MCP setup guide](docs/mcp.md) for the direct-download configuration.
+The server works on saved `.framestudio` projects with the desktop app closed.
 
 ## Development and documentation
 
@@ -130,6 +134,7 @@ for signing, third-party notices, and release requirements.
 npm run typecheck
 npm run build
 npm test
+npm run test:e2e
 ```
 
 ### Documentation

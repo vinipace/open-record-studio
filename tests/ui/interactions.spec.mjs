@@ -1,3 +1,4 @@
+import { openRecordingDialog } from "./helpers.mjs";
 import { test, expect, _electron as electron } from "@playwright/test";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -97,7 +98,7 @@ test("recording activity creates editable eased zooms and preserves MCP timestam
           original = child.spawn;
         child.spawn = (command, args, options) =>
           String(command).endsWith("/frame-capture") &&
-          args.includes("--source")
+          (args.includes("--source") || args.includes("--interaction-access"))
             ? original(
                 config.node,
                 [config.script, ...args, "--fixture", config.fixture],
@@ -128,8 +129,9 @@ test("recording activity creates editable eased zooms and preserves MCP timestam
     await page.evaluate(() => {
       navigator.mediaDevices.enumerateDevices = async () => [];
     });
-    await page.locator("#new-recording").click();
-    await expect(page.locator("#interaction-access-status")).toBeVisible();
+    await openRecordingDialog(page);
+    await expect(page.locator("#start-record")).toBeEnabled();
+    await expect(page.locator(".interaction-setup")).toBeHidden();
     await page.locator("#start-record").click();
     await expect(page.locator("#recording-banner")).toBeVisible();
     await page.locator("#stop-record").click();

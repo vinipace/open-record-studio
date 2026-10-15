@@ -18,12 +18,14 @@ import {
   Tray,
   nativeImage,
   Notification,
+  clipboard,
 } from "electron";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { configureAppIdentity } from "./app-identity.mjs";
+import { mcpClientConfig } from "./mcp-config.mjs";
 import {
   binary,
   defaults,
@@ -1279,9 +1281,28 @@ app
           submenu: [
             { role: "about" },
             {
+              label: "Copy MCP configuration",
+              // The custom macOS bundle retains Electron's executable name;
+              // detect our packaged resources the same way as nativeCapturePath.
+              enabled: import.meta.url.includes("app.asar/"),
+              click: () =>
+                clipboard.writeText(
+                  JSON.stringify(
+                    mcpClientConfig(
+                      path.join(
+                        process.resourcesPath,
+                        "bin/open-record-studio-mcp",
+                      ),
+                    ),
+                    null,
+                    2,
+                  ),
+                ),
+            },
+            {
               label: "Licenses & acknowledgements",
               click: async () => {
-                const target = app.isPackaged
+                const target = import.meta.url.includes("app.asar/")
                   ? path.join(process.resourcesPath, "licenses/index.html")
                   : path.join(here, "../THIRD_PARTY_NOTICES.md");
                 const error = await shell.openPath(target);

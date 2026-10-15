@@ -5,8 +5,20 @@ import path from "node:path";
 export async function connectMcp(mode = "legacy") {
   const client = new Client({ name: "frame-studio-test", version: "1.0.0" });
   const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: [path.resolve("mcp/server.mjs")],
+    command: process.env.FRAME_MCP_COMMAND || process.execPath,
+    args: process.env.FRAME_MCP_COMMAND ? [] : [path.resolve("mcp/server.mjs")],
+    ...(process.env.FRAME_MCP_COMMAND
+      ? {
+          cwd: process.env.FRAME_MCP_CWD || "/tmp",
+          env: {
+            PATH: "/usr/bin:/bin",
+            HOME: process.env.HOME,
+            FRAME_AUDIO_CACHE:
+              process.env.FRAME_AUDIO_CACHE ||
+              path.resolve(".cache/packaged-mcp-audio"),
+          },
+        }
+      : {}),
     stderr: "pipe",
   });
   let stderr = "";

@@ -4,22 +4,43 @@ The local stdio server edits saved `.framestudio` projects and uses the desktop 
 
 ## Connect
 
-Add the server to your MCP client configuration using the example below, then reconnect to discover its tools. Existing client entries can keep their configured alias.
+**MCP is included in the macOS app starting with v0.2.0.** No separate Node.js installation, source checkout, or `npm install` is needed.
 
-Use this stdio configuration with your own absolute Node and checkout paths:
+Open the app once and choose **Open Record Studio → Copy MCP configuration** from the macOS menu bar. Paste it into your MCP client's configuration and reconnect. The copied configuration uses the app's actual location, including custom install folders. The desktop app can then stay closed.
+
+For the standard Applications install, the configuration is:
 
 ```json
 {
   "mcpServers": {
     "open-record-studio": {
-      "command": "/absolute/path/to/node",
-      "args": ["/absolute/path/to/open-record-studio/mcp/server.mjs"]
+      "command": "/Applications/Open Record Studio.app/Contents/Resources/bin/open-record-studio-mcp",
+      "args": []
     }
   }
 }
 ```
 
-Requires Node 20+, `npm ci`, FFmpeg/ffprobe, and `npm run build:native` for editable cursor rendering on macOS. Run manually with `npm run --silent mcp`; stdout is reserved for MCP messages. No credentials or open desktop window are required. The server is a companion in the source checkout; the `.app` bundle does not include its Node dependencies. Keep the checkout and Node executable at their configured locations.
+Homebrew also installs an `open-record-studio-mcp` command:
+
+```sh
+open-record-studio-mcp --print-config
+open-record-studio-mcp --version
+```
+
+For a direct download, the same commands are available using the full launcher path:
+
+```sh
+"/Applications/Open Record Studio.app/Contents/Resources/bin/open-record-studio-mcp" --print-config
+```
+
+With no arguments, the launcher runs the stdio server. It uses the app's included Electron/Node runtime, production dependencies, native renderers, and audio model. It opens no editor window or network port. FFmpeg/ffprobe are still required for previews and renders (`brew install ffmpeg`); the Homebrew cask installs them automatically. No credentials are required.
+
+After moving the app, copy the configuration again. After upgrading it, reconnect your MCP client so it launches the new server. Existing source-based configurations and client aliases remain supported.
+
+### Run from source (developers)
+
+Use Node 20+, `npm ci`, FFmpeg/ffprobe, and `npm run build:native` on macOS. Run `npm run --silent mcp`, or configure your client with an absolute Node executable as `command` and the absolute `mcp/server.mjs` path in `args`. Standard output is reserved for MCP messages.
 
 Uses the [official MCP SDK](https://github.com/modelcontextprotocol/typescript-sdk) with both legacy initialize and current discovery support.
 

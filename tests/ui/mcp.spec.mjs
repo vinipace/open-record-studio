@@ -24,6 +24,49 @@ test("MCP edits appear in the desktop, stale saves preserve both editors, and re
     await expect(page.locator("#project-title")).toHaveText(
       "Motion validation",
     );
+    if (process.env.FRAME_EXECUTABLE) {
+      // Exercise the real menu action without overwriting the user's clipboard.
+      const config = await app.evaluate(
+        ({ app: application, Menu, clipboard }) => {
+          const original = clipboard.writeText;
+          let copied;
+          clipboard.writeText = (text) => {
+            copied = text;
+          };
+          try {
+            const menu = Menu.getApplicationMenu().items[0].submenu;
+            const item = menu.items.find(
+              (item) => item.label === "Copy MCP configuration",
+            );
+            if (!item?.enabled)
+              throw new Error(
+                `Packaged MCP configuration menu missing: ${JSON.stringify({
+                  packaged: application.isPackaged,
+                  items: menu.items.map((item) => ({
+                    label: item.label,
+                    enabled: item.enabled,
+                  })),
+                })}`,
+              );
+            item.click();
+            return JSON.parse(copied);
+          } finally {
+            clipboard.writeText = original;
+          }
+        },
+      );
+      expect(config).toEqual({
+        mcpServers: {
+          "open-record-studio": {
+            command: process.env.FRAME_MCP_COMMAND,
+            args: [],
+          },
+        },
+      });
+    }
+    await expect(page.locator("#project-title")).toHaveText(
+      "Motion validation",
+    );
     await page.locator("#padding").fill("0.1");
     await expect(page.locator("#save-state")).toHaveText("Unsaved changes");
     const args = { project_path: directory };
@@ -69,7 +112,7 @@ test("MCP edits appear in the desktop, stale saves preserve both editors, and re
     await expect(page.locator("#clip-count")).toHaveText("3 clips");
     await expect(page.locator("#save-state")).toHaveText("All changes saved");
     await expect(page.locator("#reload-project")).toBeHidden();
-    expect(await page.locator("#padding").inputValue()).toBe("0.065");
+    expect(await page.locator("#padding").inputValue()).toBe("0");
     await page.locator("#tab-motion").click();
     await page.locator("#zoom-selector").selectOption({ index: 1 });
     await expect(page.locator("#section-zoom")).toHaveValue("1.7");

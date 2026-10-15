@@ -12,8 +12,8 @@ if (args.includes("--interaction-access")) {
   console.log(
     JSON.stringify(
       project.interactions?.permissions ?? {
-        accessibility: false,
-        inputMonitoring: false,
+        accessibility: true,
+        inputMonitoring: true,
       },
     ),
   );

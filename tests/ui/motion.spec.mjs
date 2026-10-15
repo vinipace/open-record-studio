@@ -1,3 +1,4 @@
+import { openRecordingDialog } from "./helpers.mjs";
 import { test, expect, _electron as electron } from "@playwright/test";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -364,7 +365,8 @@ test("automatic cursor capture supports editing after recording, persistence and
         module = process.getBuiltinModule("module");
       const original = child.spawn;
       child.spawn = (command, args, config) =>
-        String(command).endsWith("/frame-capture") && args.includes("--source")
+        String(command).endsWith("/frame-capture") &&
+        (args.includes("--source") || args.includes("--interaction-access"))
           ? original(
               options.node,
               [
@@ -437,14 +439,15 @@ test("automatic cursor capture supports editing after recording, persistence and
       return stream;
     };
   });
-  await page.locator("#new-recording").click();
+  await openRecordingDialog(page);
   await expect(page.locator("[data-source]")).toHaveCount(1);
   await expect(page.locator("#record-cursor")).toHaveCount(0);
-  await page.locator("#record-camera").selectOption("warmup-camera");
-  await page.screenshot({ path: "evidence/motion/recording-picker.png" });
   const previewOpened = app.waitForEvent("window");
-  await page.locator("#start-record").click();
+  await page.locator("#record-camera").selectOption("warmup-camera");
   const webcamPreview = await previewOpened;
+  await expect(webcamPreview.locator("#recording-webcam")).toBeVisible();
+  await page.screenshot({ path: "evidence/motion/recording-picker.png" });
+  await page.locator("#start-record").click();
   await expect(page.locator("#recording-banner")).toBeVisible();
   await expect(webcamPreview.locator("#recording-webcam")).toBeVisible();
   await expect
@@ -870,11 +873,11 @@ test("automatic cursor capture supports editing after recording, persistence and
   await app.evaluate(() => {
     globalThis.__omitCaptureExclusions = true;
   });
-  await page.locator("#new-recording").click();
-  await page.locator("#record-camera").selectOption("warmup-camera");
   const failedPreviewOpened = app.waitForEvent("window");
-  await page.locator("#start-record").click();
+  await openRecordingDialog(page);
+  await page.locator("#record-camera").selectOption("warmup-camera");
   const failedPreview = await failedPreviewOpened;
+  await page.locator("#start-record").click();
   await expect(page.locator("#toast")).toContainText("could not be excluded");
   await expect(page.locator("#recording-banner")).toBeHidden();
   await expect(page.locator("#start-record")).toBeEnabled();

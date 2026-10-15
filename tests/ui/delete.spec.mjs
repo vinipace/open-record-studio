@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { layersFixture } from "../layers-fixture.mjs";
 import { saveProject, probe } from "../../desktop/media.mjs";
 import { audioEnergy } from "../media-checks.mjs";
+import { observeAudioMixer } from "./helpers.mjs";
 
 test("Delete and Backspace target selected media, zoom and audio with undo, input guards, persistence and rendered silence", async () => {
   test.setTimeout(90000);
@@ -94,6 +95,7 @@ test("Delete and Backspace target selected media, zoom and audio with undo, inpu
   };
   try {
     await launch();
+    await observeAudioMixer(page);
     await page.locator("#tab-media").click();
     await page.locator("#media-library-tab").click();
     await page.locator("#layer-list .layer-item").click();
@@ -156,22 +158,7 @@ test("Delete and Backspace target selected media, zoom and audio with undo, inpu
       ),
     );
     await expect(page.locator("#zoom-lane [data-zoom-id]")).toHaveCount(1);
-    // Track real media volume assignments: deletion must affect both sources only in range.
-    await page.evaluate(() => {
-      window.deleteVolumes = {};
-      const original = Object.getOwnPropertyDescriptor(
-        HTMLMediaElement.prototype,
-        "volume",
-      );
-      Object.defineProperty(HTMLMediaElement.prototype, "volume", {
-        ...original,
-        set(value) {
-          window.deleteVolumes[new URL(this.src).pathname.split("/").pop()] =
-            value;
-          original.set.call(this, value);
-        },
-      });
-    });
+    // Deletion must silence both mixer inputs only inside the selected range.
     await page.locator("#audio-lane .clip").first().click();
     await expect(page.locator("#audio-lane .selected")).toHaveCount(1);
     await expect(page.locator("#screen-lane .selected")).toHaveCount(0);
@@ -180,11 +167,11 @@ test("Delete and Backspace target selected media, zoom and audio with undo, inpu
     await expect(page.locator("#audio-lane .clip")).toHaveCount(1);
     await clips();
     await expect
-      .poll(() => page.evaluate(() => window.deleteVolumes))
+      .poll(() => page.evaluate(() => window.audioVolumes()))
       .toMatchObject({ screen: 0, microphone: 0 });
     await page.locator("#scrubber").fill("2.5");
     await expect
-      .poll(() => page.evaluate(() => window.deleteVolumes))
+      .poll(() => page.evaluate(() => window.audioVolumes()))
       .toMatchObject({ screen: 1, microphone: 1 });
     await page.locator("#undo").click();
     await expect(page.locator("#audio-lane .clip")).toHaveCount(2);

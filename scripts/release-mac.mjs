@@ -6,6 +6,9 @@ import { promisify } from "node:util";
 import { extractFile } from "@electron/asar";
 import { productName, bundleIdentifier } from "../desktop/app-identity.mjs";
 import { verifyLicenseBundle } from "./licenses.mjs";
+import { verifyMcpBundle } from "./mcp-bundle.mjs";
+import { packageFingerprint } from "./package-fingerprint.mjs";
+import assert from "node:assert/strict";
 
 const exec = promisify(execFile);
 const run = async (command, args) =>
@@ -66,6 +69,19 @@ for (const entry of await fs.readdir("dist", {
     throw new Error(`Stale packaged frontend: ${relative}`);
 }
 await verifyLicenseBundle(root, resources);
+await verifyMcpBundle(root, resources);
+const e2e = JSON.parse(
+  await fs.readFile(path.join(root, "evidence/release-e2e.json")),
+);
+assert(
+  e2e.mcpPassed >= 9 && e2e.uiPassed > 0,
+  "Run npm run test:e2e before releasing",
+);
+assert.deepEqual(
+  e2e.fingerprint,
+  await packageFingerprint(app),
+  "The packaged app changed since E2E. Run npm run test:e2e again before releasing.",
+);
 await run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app]);
 const signature = (await exec("/usr/bin/codesign", ["-dvv", app])).stderr;
 if (
@@ -152,7 +168,7 @@ try {
     verbatimSymlinks: true,
   });
   await fs.symlink("/Applications", path.join(imageRoot, "Applications"));
-  const installation = `${productName} ${pkg.version}\n\nRequires an Apple silicon Mac and macOS 15 or later.\n\n1. Drag ${productName}.app into Applications.\n2. Install the media tools with Homebrew: brew install ffmpeg\n3. Open ${productName} from Applications. No Node.js or source build is needed.\n\n${preview ? "This preview is Developer ID signed but NOT notarized by Apple. macOS may block its first launch. Review the source and signing identity before deciding whether to allow it in System Settings > Privacy & Security. Do not disable Gatekeeper.\n" : "This build is Developer ID signed and notarized by Apple.\n"}\nThe app requests screen/camera/microphone access as needed. Screen interaction tracking also requires Accessibility and Input Monitoring.\n\nSource, license and installation help: https://github.com/${repo}\n`;
+  const installation = `${productName} ${pkg.version}\n\nRequires an Apple silicon Mac and macOS 15 or later.\n\n1. Drag ${productName}.app into Applications.\n2. Install the media tools with Homebrew: brew install ffmpeg\n3. Open ${productName} from Applications. No Node.js or source build is needed.\n4. To connect an MCP client, choose Open Record Studio > Copy MCP configuration. The bundled server also works with the app closed.\n\n${preview ? "This preview is Developer ID signed but NOT notarized by Apple. macOS may block its first launch. Review the source and signing identity before deciding whether to allow it in System Settings > Privacy & Security. Do not disable Gatekeeper.\n" : "This build is Developer ID signed and notarized by Apple.\n"}\nThe app requests screen/camera/microphone access as needed. Screen interaction tracking also requires Accessibility and Input Monitoring.\n\nSource, license and installation help: https://github.com/${repo}\n`;
   await fs.writeFile(path.join(imageRoot, "INSTALL.txt"), installation);
   await fs.writeFile(path.join(artifacts, "INSTALL.txt"), installation);
   await run("hdiutil", [
@@ -185,7 +201,7 @@ try {
     createHash("sha256")
       .update(await fs.readFile(file))
       .digest("hex");
-  const cask = `cask "open-record-studio" do\n  version "${pkg.version}"\n  sha256 "${await sha256(dmg)}"\n\n  url "https://github.com/${repo}/releases/download/v#{version}/Open-Record-Studio-#{version}-macOS-arm64.dmg"\n  name "Open Record Studio"\n  desc "Local screen and webcam recorder with synchronized video editing"\n  homepage "https://github.com/${repo}"\n\n  depends_on formula: "ffmpeg"\n  depends_on macos: :sequoia\n  depends_on arch: :arm64\n\n  app "Open Record Studio.app"\n${preview ? '\n  caveats "This preview is signed but not notarized. macOS may block its first launch."\n' : ""}end\n`;
+  const cask = `cask "open-record-studio" do\n  version "${pkg.version}"\n  sha256 "${await sha256(dmg)}"\n\n  url "https://github.com/${repo}/releases/download/v#{version}/Open-Record-Studio-#{version}-macOS-arm64.dmg"\n  name "Open Record Studio"\n  desc "Local screen and webcam recorder with synchronized video editing"\n  homepage "https://github.com/${repo}"\n\n  depends_on formula: "ffmpeg"\n  depends_on macos: :sequoia\n  depends_on arch: :arm64\n\n  app "Open Record Studio.app"\n  binary "#{appdir}/Open Record Studio.app/Contents/Resources/bin/open-record-studio-mcp"\n${preview ? '\n  caveats "This preview is signed but not notarized. macOS may block its first launch."\n' : ""}end\n`;
   await fs.writeFile(path.join(artifacts, "open-record-studio.rb"), cask);
   const manifest = {
     product: productName,
@@ -199,14 +215,19 @@ try {
     notarized: !preview,
     notarizationSubmissions: submissions,
     appAsarSha256: await sha256(asar),
+    bundledMcp: {
+      launcher: "Contents/Resources/bin/open-record-studio-mcp",
+      manifestSha256: await sha256(
+        path.join(resources, "mcp-runtime/manifest.json"),
+      ),
+    },
+    e2e: { date: e2e.date, mcpPassed: e2e.mcpPassed, uiPassed: e2e.uiPassed },
     files: await Promise.all(
-      (await fs.readdir(artifacts))
-        .sort()
-        .map(async (name) => ({
-          name,
-          bytes: (await fs.stat(path.join(artifacts, name))).size,
-          sha256: await sha256(path.join(artifacts, name)),
-        })),
+      (await fs.readdir(artifacts)).sort().map(async (name) => ({
+        name,
+        bytes: (await fs.stat(path.join(artifacts, name))).size,
+        sha256: await sha256(path.join(artifacts, name)),
+      })),
     ),
   };
   await fs.writeFile(

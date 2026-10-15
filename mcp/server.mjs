@@ -4,8 +4,12 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+const { version } = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url)),
+);
 import {
   exportFormats,
   normalizeExportOptions,
@@ -179,7 +183,7 @@ function failure(error) {
 
 export function createFrameServer() {
   const server = new McpServer(
-    { name: "open-record-studio", version: "0.3.0" },
+    { name: "open-record-studio", version },
     {
       instructions:
         "Edit saved local Open Record Studio projects. Start with get_project for capabilities and source/output timeline positions. get_interactions queries recorded click, typing, selection, scroll and drag timing and positions, mapped through saved cuts and speed; it contains no typed or selected text. update_style changes cursor, webcam, framing, audio and speed. apply_edits performs up to 100 edits atomically; dry_run validates without saving. Each operation is validated in order against previous operations. Dry runs return a proposed project with the unchanged base revision; generated zoom IDs are provisional. Cuts are retained source-time clips (not discarded ranges), indexed from zero. Split then remove a clip to discard a middle interval. Mutations require the latest revision and return the new revision. Preview time is on the edited output timeline. Zoom boundaries are source seconds. Render starts an asynchronous job; poll render_status until succeeded. Unsaved desktop changes are not included. The desktop shows Reload when a saved project changes.",
@@ -514,10 +518,7 @@ export function createFrameServer() {
   return { server, stop };
 }
 
-if (
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+export function startStdio() {
   let active;
   const connection = serveStdio(
     () => {
@@ -535,3 +536,9 @@ if (
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
 }
+
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+)
+  startStdio();

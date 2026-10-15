@@ -37,6 +37,26 @@ of nested Electron components and native helpers. A successful local signature
 check does not prove notarization. The packaging command does not submit an app
 to Apple.
 
+## Bundled MCP
+
+`Contents/Resources/bin/open-record-studio-mcp` uses the app's Electron executable
+with `ELECTRON_RUN_AS_NODE=1`. The unpacked `mcp-runtime` contains the MCP source,
+shared desktop modules, audio model, and only the production dependencies pinned
+by `package-lock.json`. Relative symlinks reuse the app's signed native helpers.
+The launcher resolves symlinks, supports paths containing spaces, and clears
+external Node preload settings. The app menu copies a configuration using its
+actual installation path. Homebrew links the same launcher into its bin directory.
+
+Packaging checks the runtime against source and lockfile and signs it with the
+rest of the app. `npm run test:e2e` relocates a copy outside the checkout, removes
+Node from the server's PATH, exercises direct and symlink launchers, runs real
+stdio editing/preview/render/cancellation workflows, and runs the desktop suite.
+The tests use generated media and isolated profiles; live capture permissions
+and camera hardware remain separate checks. `evidence/release-e2e.json` records
+passing test counts and a fingerprint of the tested app. Release creation rejects
+missing evidence or a changed bundle. `npm run test:mcp:packaged` reruns only the
+relocated MCP checks against an already packaged app.
+
 ## Downloadable releases
 
 Commit changes and set the intended version in `package.json` and the lockfile.
@@ -54,7 +74,7 @@ passwords, private keys, or signing certificates in this repository. Then run:
 NOTARYTOOL_PROFILE="your-saved-profile-name" npm run release:mac
 ```
 
-The command builds and checks the app, creates a ZIP and a drag-to-Applications
+The command builds the app, runs packaged MCP and desktop E2E tests, then creates a ZIP and a drag-to-Applications
 DMG, and emits `SHA256SUMS.txt`, `release.json`, installation instructions, and a
 versioned Homebrew cask. Output lives in `release/v<version>/macos-arm64/`. Existing
 output is never overwritten. Releases require a real Developer ID certificate;
@@ -71,9 +91,7 @@ publishing. Mark unnotarized builds as previews. Copy the generated
 checksum pins the DMG. Keep the release tag on the build's source commit. Homebrew
 uses this repository as an explicit tap and installs FFmpeg as a dependency.
 
-Release visibility follows repository visibility. Publishing a release in a
-private repository does not make its files publicly downloadable. See
-[installation instructions](install.md).
+See [installation instructions](install.md).
 
 ## Artwork and model sources
 

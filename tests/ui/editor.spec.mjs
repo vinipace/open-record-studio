@@ -1,3 +1,4 @@
+import { openRecordingDialog } from "./helpers.mjs";
 import { test, expect, _electron as electron } from "@playwright/test";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -306,7 +307,7 @@ test("recording requires native tracking, writes independent camera/microphone s
       return destination.stream;
     };
   });
-  await page.locator("#new-recording").click();
+  await openRecordingDialog(page);
   await expect(page.locator("#interaction-access-status")).toContainText(
     "requires macOS 15",
   );
@@ -322,7 +323,8 @@ test("recording requires native tracking, writes independent camera/microphone s
       const child = process.getBuiltinModule("child_process"),
         original = child.spawn;
       child.spawn = (command, args, options) =>
-        String(command).endsWith("/frame-capture") && args.includes("--source")
+        String(command).endsWith("/frame-capture") &&
+        (args.includes("--source") || args.includes("--interaction-access"))
           ? original(
               config.node,
               [config.script, ...args, "--fixture", config.fixture],
@@ -337,7 +339,7 @@ test("recording requires native tracking, writes independent camera/microphone s
       fixture: nativeFixture.directory,
     },
   );
-  await page.locator("#new-recording").click();
+  await openRecordingDialog(page);
   await expect(page.locator("[data-source]")).toHaveCount(1);
   await expect(page.locator("#record-cursor")).toHaveCount(0);
   await page.locator("#record-camera").selectOption("fake-camera");
@@ -429,10 +431,10 @@ test("recording requires native tracking, writes independent camera/microphone s
   expect([screen.width, screen.height]).toEqual([1152, 720]);
   expect([camera.width, camera.height]).toEqual([1280, 720]);
   expect(Math.abs(screen.duration - camera.duration)).toBeLessThan(0.04);
-  expect(screen.audio).toBe(true);
-  expect(camera.audio).toBe(false);
+  expect(screen.audio).toBe(false);
+  expect(camera.audio).toBe(true);
   expect(
-    await audioEnergy(path.join(exportRoot, dirs[0], "screen.mp4")),
+    await audioEnergy(path.join(exportRoot, dirs[0], "camera.mp4")),
   ).toBeGreaterThan(0.005);
 });
 

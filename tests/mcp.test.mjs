@@ -457,6 +457,57 @@ async function waitForJob(
   }
   throw new Error("Render timed out");
 }
+
+test("MCP renders enhanced microphone audio using the bundled RNNoise model", async () => {
+  const directory = path.join(root, "enhanced-audio.framestudio");
+  await motionFixture(directory);
+  const project = await readProject(directory);
+  const audio = path.join(directory, "microphone.wav");
+  await exec(await binary("ffmpeg"), [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:sample_rate=48000:duration=4",
+    "-c:a",
+    "pcm_s16le",
+    audio,
+  ]);
+  project.tracks.microphone = {
+    ...(await probe(audio)),
+    file: "microphone.wav",
+    offset: 0,
+  };
+  await saveProject(project);
+  const before = await call(client, "get_project", { project_path: directory });
+  const updated = await call(client, "update_style", {
+    project_path: directory,
+    expected_revision: before.revision,
+    changes: { enhanceAudio: true },
+  });
+  const job = await call(client, "render", {
+    project_path: directory,
+    expected_revision: updated.revision,
+    output_directory: path.join(root, "enhanced-output"),
+    mode: "separate",
+    height: 720,
+    fps: 30,
+    audio: true,
+  });
+  const result = await waitForJob(job.job_id);
+  assert.equal(result.status, "succeeded", result.error);
+  const camera = await probe(
+    result.files.find((file) => file.endsWith("camera.mp4")),
+  );
+  const screen = await probe(
+    result.files.find((file) => file.endsWith("screen.mp4")),
+  );
+  assert.equal(camera.audio, true);
+  assert.equal(screen.audio, false);
+  assert(Math.abs(camera.duration - updated.output_duration) < 0.05);
+  report.enhancedAudio = { rendered: true, microphoneOnCameraOnly: true };
+});
 async function pixels(file, frame) {
   const { stdout } = await exec(
     await binary("ffmpeg"),
@@ -592,23 +643,24 @@ test("MCP renders GIF with default settings and preserves animated zoom/cursor p
     assert.equal(meta.audio, false);
     assert.ok(Math.abs(meta.duration - p.output_duration) < 0.1);
   }
-  // Compare to the same edited output frame rendered without palette loss.
+  // Compare against the lossless preview at the same edited timestamp. The
+  // native MP4 encoder rasterizes the cursor differently; its output is checked
+  // separately above, and is not a pixel reference for GIF palette conversion.
   const project = await readProject(projectPath);
-  const { exportProject } = await import("../desktop/media.mjs");
-  const reference = await exportProject(
-    project,
-    project.edits,
-    { mode: "separate", height: 720, fps: 60, audio: false },
-    root,
-  );
+  const { previewProject } = await import("../desktop/preview.mjs");
+  const reference = await previewProject(project, {
+    mode: "screen",
+    time: 1,
+    height: 720,
+    fps: 60,
+  });
   const actualFile = result.files.find((f) => f.endsWith("screen.gif"));
-  const referenceFile = reference.files.find((f) => f.endsWith("screen.mp4"));
+  const referenceFile = path.join(root, "gif-preview.png");
+  await fs.writeFile(referenceFile, reference.image);
   const expectedFile = path.join(root, "gif-reference.png");
   await exec(await binary("ffmpeg"), [
     "-v",
     "error",
-    "-ss",
-    "1",
     "-i",
     referenceFile,
     "-frames:v",
