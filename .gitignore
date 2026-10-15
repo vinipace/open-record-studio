@@ -1,0 +1,30 @@
+node_modules/
+.cache/
+evidence/
+extracted/
+readable/
+.DS_Store
+dist/
+release/
+test-results/
+playwright-report/
+examples/**/*.mp4
+examples/**/*.webm
+examples/**/*.mkv
+
+native/bin/
+
+# Local credentials and generated Python files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+__pycache__/
+*.py[cod]
+
+# User projects and recordings
+*.framestudio/
+!examples/*.framestudio/

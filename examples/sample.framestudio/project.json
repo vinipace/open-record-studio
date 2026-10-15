@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "kind": "frame-studio",
+  "name": "Two tracks, one story",
+  "createdAt": "2026-10-14T03:24:20.954Z",
+  "duration": 8,
+  "tracks": {
+    "screen": {
+      "duration": 8,
+      "width": 1280,
+      "height": 720,
+      "audio": true,
+      "video": true,
+      "file": "screen.mp4",
+      "offset": 0
+    },
+    "camera": {
+      "duration": 8,
+      "width": 640,
+      "height": 480,
+      "audio": false,
+      "video": true,
+      "file": "camera.mp4",
+      "offset": 0
+    }
+  },
+  "edits": {
+    "segments": [
+      {
+        "start": 0,
+        "end": 8
+      }
+    ],
+    "style": {
+      "background": "#7060a6",
+      "padding": 0.065,
+      "cameraSize": 0.22,
+      "cameraCorner": "bottom-right",
+      "cameraShape": "circle",
+      "showCamera": true,
+      "zoom": 1,
+      "focusX": 0.5,
+      "focusY": 0.5,
+      "speed": 1,
+      "volume": 1,
+      "microphoneVolume": 1,
+      "cameraOffset": 0
+    }
+  }
+}
