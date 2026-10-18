@@ -1,6 +1,6 @@
 {
   "name": "open-record-studio",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "license": "MIT",
   "description": "Independent local screen and webcam recorder with synchronized separate exports",

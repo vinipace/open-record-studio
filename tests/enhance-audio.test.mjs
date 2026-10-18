@@ -21,6 +21,7 @@ import {
   validateEdits,
 } from "../desktop/media.mjs";
 import { editOperations, styleFields } from "../mcp/edits.mjs";
+import { audioModels } from "../desktop/audio-models.mjs";
 
 const exec = promisify(execFile);
 let root, ffmpeg, project, enhanced, originalHash;
@@ -89,7 +90,12 @@ before(async () => {
     },
     edits: {
       segments: [{ start: 0, end: 8 }],
-      style: { ...defaults, enhanceAudio: true, showCursor: false },
+      style: {
+        ...defaults,
+        enhanceAudio: true,
+        audioEnhancementModel: "rnnoise",
+        showCursor: false,
+      },
     },
   };
   originalHash = await sha(path.join(root, "microphone.wav"));
@@ -184,17 +190,54 @@ test("cache reuses completed audio, invalidates changed sources and cancels clea
   );
   const cancelling = new AbortController();
   const cancelledCache = path.join(root, "cancelled-cache");
-  await assert.rejects(enhanceProjectAudio(project, {
-    cacheRoot: cancelledCache,
-    signal: cancelling.signal,
-    onProgress: () => cancelling.abort(),
-  }), /abort|cancel/i);
-  assert((await fs.readdir(cancelledCache)).every(file => file.endsWith(".rnnn")), "Cancellation removes partially written audio");
+  await assert.rejects(
+    enhanceProjectAudio(project, {
+      cacheRoot: cancelledCache,
+      signal: cancelling.signal,
+      onProgress: () => cancelling.abort(),
+    }),
+    /abort|cancel/i,
+  );
+  assert(
+    (await fs.readdir(cancelledCache)).every((file) => file.endsWith(".rnnn")),
+    "Cancellation removes partially written audio",
+  );
 });
 
 test("saved option and MCP update support old projects without changing originals", async () => {
   const legacy = { ...defaults };
   delete legacy.enhanceAudio;
+  delete legacy.audioEnhancementModel;
+  assert.equal(
+    validateEdits({ segments: [{ start: 0, end: 8 }], style: legacy }, 8).style
+      .audioEnhancementModel,
+    "deepfilternet3",
+  );
+  for (const { id } of audioModels) {
+    assert.equal(styleFields.audioEnhancementModel.parse(id), id);
+    assert.equal(
+      validateEdits(
+        {
+          segments: [{ start: 0, end: 8 }],
+          style: { ...defaults, audioEnhancementModel: id },
+        },
+        8,
+      ).style.audioEnhancementModel,
+      id,
+    );
+  }
+  for (const invalid of [null, true, "missing-model", "../model.py"]) {
+    assert.throws(() => styleFields.audioEnhancementModel.parse(invalid));
+    assert.throws(() =>
+      validateEdits(
+        {
+          segments: [{ start: 0, end: 8 }],
+          style: { ...defaults, audioEnhancementModel: invalid },
+        },
+        8,
+      ),
+    );
+  }
   assert.equal(
     validateEdits({ segments: [{ start: 0, end: 8 }], style: legacy }, 8).style
       .enhanceAudio,
@@ -227,6 +270,74 @@ test("saved option and MCP update support old projects without changing original
     ["microphone", "asset-take"],
   );
 });
+
+// Explicit opt-in: normal tests never download optional model dependencies.
+test(
+  "additional models preserve length, use separate caches and feed the selected export",
+  {
+    skip: !process.env.FRAME_TEST_AUDIO_MODELS,
+    timeout: 300000,
+  },
+  async () => {
+    const paths = new Set([enhanced.microphone]);
+    const dry = await pcm(path.join(root, "microphone.wav"));
+    for (const model of ["deepfilternet3", "mossformer2"]) {
+      const files = await enhanceProjectAudio(project, { model });
+      assert(
+        !paths.has(files.microphone),
+        "Each model must have its own cached result",
+      );
+      paths.add(files.microphone);
+      const wet = await pcm(files.microphone);
+      assert.equal(wet.length, dry.length, `${model}: exact sample count`);
+      assert(wet.every(Number.isFinite));
+      assert(
+        rms(wet, 0.5, 1.5) < rms(dry, 0.5, 1.5),
+        `${model}: suppress noise`,
+      );
+      assert(rms(wet, 2.5, 6.5) > 0.01, `${model}: preserve audible speech`);
+      const before = await fs.stat(files.microphone);
+      assert.deepEqual(await enhanceProjectAudio(project, { model }), files);
+      assert.equal((await fs.stat(files.microphone)).mtimeMs, before.mtimeMs);
+      // Saved project still specifies RNNoise. Export must use the unsaved edits.
+      const edits = {
+        ...project.edits,
+        segments: [{ start: 1, end: 4 }],
+        style: {
+          ...defaults,
+          enhanceAudio: true,
+          audioEnhancementModel: model,
+          showCursor: false,
+        },
+      };
+      const result = await exportProject(
+        project,
+        edits,
+        { mode: "combined", height: 720, fps: 30, audio: true },
+        root,
+      );
+      const actual = await pcm(result.files[0]);
+      const expected = await pcm(
+        files.microphone,
+        "atrim=start=0.8:end=3.8,asetpts=PTS-STARTPTS,atempo=1",
+      );
+      let xy = 0,
+        xx = 0,
+        yy = 0;
+      for (let i = 0; i < Math.min(actual.length, expected.length); i++) {
+        xy += actual[i] * expected[i];
+        xx += actual[i] ** 2;
+        yy += expected[i] ** 2;
+      }
+      const correlation = xy / Math.sqrt(xx * yy);
+      assert(
+        correlation > 0.95,
+        `${model}: export matches selected preview audio and offset (${correlation})`,
+      );
+    }
+    assert.equal(await sha(path.join(root, "microphone.wav")), originalHash);
+  },
+);
 
 test("enhanced export uses cached source with cuts, offset, speed and mute ranges", async () => {
   const edits = {

@@ -2,6 +2,7 @@ import { CutMedia } from "./cut-media";
 import { sourceTime, segmentAt, nextMediaCut } from "./timeline";
 import { layerSample } from "../desktop/webcam-take.mjs";
 import { audioRemovedAt } from "../desktop/audio-edits.mjs";
+import { defaultAudioModel } from "../desktop/audio-models.mjs";
 import type { Project, Edits } from "./types";
 
 type Entry = {
@@ -15,6 +16,8 @@ export class EnhancedAudio {
   ready = false;
   pending = false;
   error = "";
+  message = "";
+  private requestId = "";
   private signature = "";
   private generation = 0;
   private projectId = "";
@@ -23,7 +26,13 @@ export class EnhancedAudio {
   constructor(
     private changed: () => void,
     private prepared: () => void,
-  ) {}
+  ) {
+    window.studio.onEnhanceProgress?.((progress) => {
+      if (!this.pending || progress.requestId !== this.requestId) return;
+      this.message = progress.message;
+      this.changed();
+    });
+  }
   has(key: string) {
     return this.ready && this.entries.some((e) => e.key === key);
   }
@@ -32,6 +41,7 @@ export class EnhancedAudio {
     const signature = enabled
       ? JSON.stringify([
           project.id,
+          edits.style.audioEnhancementModel ?? defaultAudioModel,
           project.tracks,
           project.assets,
           edits.layers?.map((l) => [l.id, l.assetId]),
@@ -45,6 +55,7 @@ export class EnhancedAudio {
       return;
     }
     this.projectId = project.id;
+    this.requestId = crypto.randomUUID();
     this.loading = new AbortController();
     this.pending = true;
     this.changed();
@@ -59,7 +70,11 @@ export class EnhancedAudio {
   ) {
     const entries: Entry[] = [];
     try {
-      const urls = await window.studio.enhanceAudio(project.id);
+      const urls = await window.studio.enhanceAudio(
+        project.id,
+        edits.style.audioEnhancementModel ?? defaultAudioModel,
+        this.requestId,
+      );
       if (generation !== this.generation) return;
       const targets = [
         ...["screen", "microphone"]
@@ -224,11 +239,18 @@ export class EnhancedAudio {
     this.loading?.abort();
     this.loading = null;
     if (this.pending && this.projectId)
-      void window.studio.cancelEnhanceAudio(this.projectId).catch(() => {});
+      void window.studio
+        .cancelEnhanceAudio(this.projectId, this.requestId)
+        .catch(() => {});
     this.generation++;
     this.release(this.entries);
     this.entries = [];
     this.ready = this.pending = false;
-    this.error = this.signature = this.projectId = "";
+    this.error =
+      this.message =
+      this.signature =
+      this.projectId =
+      this.requestId =
+        "";
   }
 }

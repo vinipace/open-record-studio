@@ -484,7 +484,7 @@ test("MCP renders enhanced microphone audio using the bundled RNNoise model", as
   const updated = await call(client, "update_style", {
     project_path: directory,
     expected_revision: before.revision,
-    changes: { enhanceAudio: true },
+    changes: { enhanceAudio: true, audioEnhancementModel: "rnnoise" },
   });
   const job = await call(client, "render", {
     project_path: directory,

@@ -1164,10 +1164,40 @@ input[type="number"] {
 .audio-enhancement h3 {
   justify-content: space-between;
 }
+#audio-advanced {
+  margin-top: 14px;
+}
+#audio-advanced summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  width: fit-content;
+}
+#audio-advanced summary:hover {
+  color: var(--text);
+}
+.audio-model-label {
+  display: block;
+  margin: 14px 0 7px;
+  font-size: 12px;
+}
+#audioEnhancementModel {
+  width: 100%;
+  max-width: none;
+}
+#audio-model-description,
+.audio-model-note {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
 #enhance-audio-status {
   color: var(--muted);
   font-size: 12px;
   margin-top: 8px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 .switch {
   margin-left: auto;

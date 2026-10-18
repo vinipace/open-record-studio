@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld(
     assetWaveform: invoke("assetWaveform"),
     enhanceAudio: invoke("enhanceAudio"),
     cancelEnhanceAudio: invoke("cancelEnhanceAudio"),
+    onEnhanceProgress: (fn) => {
+      const listener = (_, data) => fn(data);
+      ipcRenderer.on("frame:enhance-progress", listener);
+      return () =>
+        ipcRenderer.removeListener("frame:enhance-progress", listener);
+    },
     sources: invoke("sources"),
     openScreenSettings: invoke("openScreenSettings"),
     interactionAccess: invoke("interactionAccess"),

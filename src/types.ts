@@ -30,6 +30,7 @@ export type Style = {
   volume: number;
   microphoneVolume: number;
   enhanceAudio: boolean;
+  audioEnhancementModel: import("../desktop/audio-models.mjs").AudioModelId;
   cameraOffset: number;
   showCursor: boolean;
   cursorSize: number;
@@ -157,8 +158,15 @@ export type PreviewResize = {
 declare global {
   interface Window {
     studio: {
-      enhanceAudio: (id: string) => Promise<Record<string, string>>;
-      cancelEnhanceAudio: (id: string) => Promise<void>;
+      enhanceAudio: (
+        id: string,
+        model: Style["audioEnhancementModel"],
+        requestId: string,
+      ) => Promise<Record<string, string>>;
+      cancelEnhanceAudio: (id: string, requestId: string) => Promise<void>;
+      onEnhanceProgress: (
+        fn: (data: { requestId: string; message: string }) => void,
+      ) => () => void;
       waveforms: (id: string) => Promise<import("./waveform").WaveformTracks>;
       assetWaveform: (
         id: string,

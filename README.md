@@ -4,7 +4,7 @@ A local macOS screen recorder and video editor. Record your screen and webcam,
 edit them on one timeline, then export a finished composition or separate,
 synchronized videos.
 
-[Download for macOS](https://github.com/vinipace/open-record-studio/releases/download/v0.2.0/Open-Record-Studio-0.2.0-macOS-arm64.dmg) · [Homebrew](#homebrew) · [All releases](https://github.com/vinipace/open-record-studio/releases) · [Editor guide](docs/guide.md) · [MCP setup](docs/mcp.md) · [MIT license](LICENSE)
+[Download for macOS](https://github.com/vinipace/open-record-studio/releases/download/v0.3.0/Open-Record-Studio-0.3.0-macOS-arm64.dmg) · [Homebrew](#homebrew) · [All releases](https://github.com/vinipace/open-record-studio/releases) · [Editor guide](docs/guide.md) · [MCP setup](docs/mcp.md) · [MIT license](LICENSE)
 
 ## Download and install
 
@@ -21,7 +21,7 @@ This installs the app, its FFmpeg media tools, and the `open-record-studio-mcp` 
 
 ### Direct download
 
-1. **[Download the DMG](https://github.com/vinipace/open-record-studio/releases/download/v0.2.0/Open-Record-Studio-0.2.0-macOS-arm64.dmg)** and drag **Open Record Studio** into **Applications**. A [ZIP download](https://github.com/vinipace/open-record-studio/releases/download/v0.2.0/Open-Record-Studio-0.2.0-macOS-arm64.zip) is also available.
+1. **[Download the DMG](https://github.com/vinipace/open-record-studio/releases/download/v0.3.0/Open-Record-Studio-0.3.0-macOS-arm64.dmg)** and drag **Open Record Studio** into **Applications**. A [ZIP download](https://github.com/vinipace/open-record-studio/releases/download/v0.3.0/Open-Record-Studio-0.3.0-macOS-arm64.zip) is also available.
 2. Install the media tools with [Homebrew](https://brew.sh): `brew install ffmpeg`.
 3. Open **Open Record Studio** from Applications.
 
@@ -41,7 +41,7 @@ for first-launch help, updates, and checksum verification.
   selections, and other recorded interactions. Adjust the cursor after recording.
 - **Shape your webcam.** Control roundness, size, position, margin, and mirroring.
   Record an additional webcam take while the existing video plays.
-- **Finish locally.** Reduce speech background noise with RNNoise, choose canvas
+- **Finish locally.** Reduce speech background noise with RNNoise, DeepFilterNet3, or MossFormer2, choose canvas
   ratios and social presets, and export MP4 or GIF without uploading your media.
 - **Edit through MCP.** Query projects and interaction timestamps, get preview
   images, change cuts and zooms, and start or cancel renders from an MCP client.

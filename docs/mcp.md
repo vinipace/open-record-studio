@@ -72,7 +72,7 @@ All project tools take `project_path`, the absolute project **directory**, not `
 
 `update_style` accepts a nonempty `changes` object. It preserves every omitted setting:
 
-`changes: {"enhanceAudio": true}` enables local RNNoise speech noise suppression (default `false`). MP4 renders and desktop playback share the cached enhanced sources; originals, cuts, offsets, speed, gains and audio removal ranges are preserved. This also enhances recorded webcam-take microphones. GIF remains silent.
+`changes: {"enhanceAudio": true}` enables local speech noise suppression (default `false`). `audioEnhancementModel` selects `deepfilternet3` (default), `rnnoise` (bundled), or `mossformer2`. DeepFilterNet3 and MossFormer2 download their local runtime and weights on first use, then run offline; each selection has its own audio cache. MP4 renders and desktop playback share the cached enhanced sources; originals, cuts, offsets, speed, gains and audio removal ranges are preserved. This also enhances recorded webcam-take microphones. GIF remains silent.
 
 ```json
 {

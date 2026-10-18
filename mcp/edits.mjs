@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { canFollowCursor } from "../desktop/motion.mjs";
+import { audioModels } from "../desktop/audio-models.mjs";
 import {
   aspectRatios,
   canvasTemplates,
@@ -52,7 +53,12 @@ export const styleFields = {
   enhanceAudio: z
     .boolean()
     .describe(
-      "Locally reduce speech background noise with the bundled RNNoise RNN model. Applies to preview and audio exports; originals stay unchanged.",
+      "Locally reduce speech background noise with the selected model. Applies to preview and audio exports; originals stay unchanged.",
+    ),
+  audioEnhancementModel: z
+    .enum(audioModels.map((model) => model.id))
+    .describe(
+      "Speech cleanup model: deepfilternet3 (default), rnnoise (bundled), or mossformer2. DeepFilterNet3 and MossFormer2 download their processing components on first use, then run locally.",
     ),
   aspectRatio: z
     .enum(aspectRatios)

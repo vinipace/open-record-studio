@@ -39,6 +39,7 @@ import {
 } from "./media.mjs";
 import { serveMedia } from "./serve-media.mjs";
 import { enhanceProjectAudio } from "./enhance-audio.mjs";
+import { audioModel } from "./audio-models.mjs";
 import { startCapture } from "./native-capture.mjs";
 import { resizePreviewBounds } from "./preview-window.mjs";
 import {
@@ -187,31 +188,56 @@ handle("assetWaveform", async (id, assetId) => {
     if (assetWaveformJobs.get(key) === job) assetWaveformJobs.delete(key);
   }
 });
-handle("enhanceAudio", async (id) => {
+handle("enhanceAudio", async (id, model, requestId) => {
   if (!current || current.id !== id)
     throw new Error("Open this project before enhancing audio");
+  const selectedModel = audioModel(
+    model ?? current.edits.style.audioEnhancementModel,
+  ).id;
+  if (
+    requestId !== undefined &&
+    (typeof requestId !== "string" || requestId.length > 80)
+  )
+    throw new Error("Invalid audio enhancement request");
   enhancementJob?.controller.abort();
   const controller = new AbortController();
-  const job = { id, controller };
+  const job = { id, controller, requestId };
   enhancementJob = job;
   try {
     const files = await enhanceProjectAudio(current, {
       signal: controller.signal,
+      model: selectedModel,
+      onStatus: (message) => {
+        if (enhancementJob === job && !win?.isDestroyed())
+          win?.webContents.send("frame:enhance-progress", {
+            requestId,
+            message,
+          });
+      },
     });
     controller.signal.throwIfAborted();
-    enhancedFiles.set(id, files);
+    // URLs identify immutable results, so switching models cannot reuse an old
+    // browser response or change the file underneath an active decoder.
+    const registered = enhancedFiles.get(id) || {};
+    for (const file of Object.values(files))
+      registered[path.basename(file)] = file;
+    enhancedFiles.set(id, registered);
     return Object.fromEntries(
       Object.keys(files).map((key) => [
         key,
-        `studio://media/${id}/enhanced/${key}`,
+        `studio://media/${id}/enhanced/${path.basename(files[key])}`,
       ]),
     );
   } finally {
     if (enhancementJob === job) enhancementJob = null;
   }
 });
-handle("cancelEnhanceAudio", (id) => {
-  if (enhancementJob?.id === id) enhancementJob.controller.abort();
+handle("cancelEnhanceAudio", (id, requestId) => {
+  if (
+    enhancementJob?.id === id &&
+    (requestId === undefined || enhancementJob.requestId === requestId)
+  )
+    enhancementJob.controller.abort();
 });
 app.on("before-quit", () => {
   waveformJob?.controller.abort();

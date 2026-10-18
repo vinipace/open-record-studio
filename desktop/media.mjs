@@ -31,6 +31,7 @@ import { revisionOf } from "./project-store.mjs";
 import { cameraStartHold } from "./camera-timing.mjs";
 import { normalizeExportOptions } from "./export-settings.mjs";
 import { enhanceProjectAudio } from "./enhance-audio.mjs";
+import { audioModel, defaultAudioModel } from "./audio-models.mjs";
 import {
   screenRenderSize,
   selectVideoEncoder,
@@ -176,6 +177,7 @@ export const defaults = {
   volume: 1,
   microphoneVolume: 1,
   enhanceAudio: false,
+  audioEnhancementModel: defaultAudioModel,
   cameraOffset: 0,
   showCursor: true,
   cursorSize: 1,
@@ -254,6 +256,7 @@ export function validateEdits(edits, duration, assets = {}) {
   s.showCamera = Boolean(s.showCamera);
   if (typeof s.enhanceAudio !== "boolean")
     throw new Error("Invalid audio enhancement");
+  audioModel(s.audioEnhancementModel);
   if (typeof s.cameraFlip !== "boolean") throw new Error("Invalid camera flip");
   s.showCursor = Boolean(s.showCursor);
   s.cursorClicks = Boolean(s.cursorClicks);
@@ -1025,7 +1028,11 @@ export async function exportProject(
       ? "gif"
       : await selectVideoEncoder(command, run, signal);
     const enhancedAudio = enhance
-      ? await enhanceProjectAudio(project, { signal, onProgress: update })
+      ? await enhanceProjectAudio(project, {
+          signal,
+          onProgress: update,
+          model: edits.style.audioEnhancementModel,
+        })
       : {};
     if (enhance) advance();
     const cursorFiles = nativeScreen

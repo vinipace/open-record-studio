@@ -40,6 +40,12 @@ rights statement and pinned source are described in
 [`desktop/models/RNNOISE-MODELS.md`](desktop/models/RNNOISE-MODELS.md).
 The model is not relicensed under this project's MIT license.
 
+Advanced audio settings also offer optional DeepFilterNet3 and MossFormer2 SE
+48K downloads. Their pinned sources, checksums, and upstream terms, together
+with the downloaded uv/Python runtime, are listed in the same model notice.
+These additional weights and runtime packages are fetched from upstream on
+first use, rather than bundled with the app.
+
 ## FFmpeg
 
 FFmpeg and ffprobe are external executables installed by the user. This repository

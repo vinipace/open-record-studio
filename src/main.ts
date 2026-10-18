@@ -13,6 +13,7 @@ import { exportProgressText } from "./export-progress";
 import { WebcamTake } from "./webcam-take";
 import { CutMedia } from "./cut-media";
 import { EnhancedAudio } from "./enhanced-audio";
+import { audioModels, audioModel } from "../desktop/audio-models.mjs";
 import { attachTooltips } from "./tooltips";
 import "./style.css";
 import appIconUrl from "../desktop/assets/open-record-studio.png";
@@ -236,7 +237,9 @@ $("#app").innerHTML = `
   <section><h3>Synchronization</h3><div class="field-row"><label for="cameraOffset">Camera offset</label><div class="unit-input"><input id="cameraOffset" type="number" step="0.01" min="-60" max="60" value="0"/><span>s</span></div></div></section>
 </div>
 <div id="panel-audio" class="settings-panel" role="tabpanel" aria-labelledby="tab-audio" hidden>
-  <section class="audio-enhancement"><h3><label for="enhanceAudio">Enhance Audio</label><label class="switch" title="Reduce background noise in speech"><input id="enhanceAudio" type="checkbox"/><span></span></label></h3><div id="enhance-audio-status" role="status" hidden></div><button id="retry-enhance-audio" class="text-button" hidden>Retry</button></section>
+  <section class="audio-enhancement"><h3><label for="enhanceAudio">Enhance Audio</label><label class="switch" title="Reduce background noise in speech"><input id="enhanceAudio" type="checkbox"/><span></span></label></h3>
+    <details id="audio-advanced"><summary>Advanced</summary><label class="audio-model-label" for="audioEnhancementModel">Model</label><select id="audioEnhancementModel" aria-describedby="audio-model-description">${audioModels.map((model) => `<option value="${model.id}">${model.name}</option>`).join("")}</select><p id="audio-model-description"></p><p class="audio-model-note">Applies to preview and export. Your audio stays on this Mac.</p></details>
+    <div id="enhance-audio-status" role="status" hidden></div><button id="retry-enhance-audio" class="text-button" hidden>Retry</button></section>
   <section><h3>${icon("screen", 16)}Screen audio</h3><label class="range-label" for="volume">Volume <output id="volume-value">100%</output></label><input id="volume" type="range" min="0" max="1" step="0.05" value="1"/></section>
   <section><h3>${icon("mic", 16)}Microphone</h3><label class="range-label" for="microphoneVolume">Volume <output id="microphoneVolume-value">100%</output></label><input id="microphoneVolume" type="range" min="0" max="1" step="0.05" value="1"/></section>
 
@@ -2515,6 +2518,11 @@ function updateEnhanceStatus() {
   if (!document.querySelector("#enhanceAudio")) return;
   const enabled = !!edits?.style.enhanceAudio;
   $<HTMLInputElement>("#enhanceAudio").checked = enabled;
+  const model = audioModel(edits?.style.audioEnhancementModel);
+  const modelSelect = $<HTMLSelectElement>("#audioEnhancementModel");
+  modelSelect.value = model.id;
+  modelSelect.disabled = !project;
+  $("#audio-model-description").textContent = model.description;
   $<HTMLInputElement>("#enhanceAudio").disabled =
     !project ||
     !(
@@ -2525,15 +2533,23 @@ function updateEnhanceStatus() {
   const status = $("#enhance-audio-status");
   status.hidden = !enabled || (!enhancedAudio.pending && !enhancedAudio.error);
   status.textContent = enhancedAudio.pending
-    ? "Enhancing…"
+    ? enhancedAudio.message || `Enhancing with ${model.name}…`
     : enhancedAudio.error
-      ? "Couldn't enhance audio"
+      ? /no space left|ENOSPC|disk space/i.test(enhancedAudio.error)
+        ? "Not enough disk space. Free some space, then retry."
+        : `Couldn't enhance with ${model.name}. Retry or choose another model.`
       : "";
   status.title = enhancedAudio.error;
   $("#retry-enhance-audio").hidden = !enabled || !enhancedAudio.error;
   $<HTMLButtonElement>("#play").disabled =
     !project || (enabled && (enhancedAudio.pending || !!enhancedAudio.error));
 }
+$("#audioEnhancementModel").addEventListener("change", (e) => {
+  const model = audioModel(
+    (e.target as HTMLSelectElement).value as Style["audioEnhancementModel"],
+  );
+  setStyle("audioEnhancementModel", model.id);
+});
 $("#retry-enhance-audio").onclick = () => {
   if (project && edits) {
     enhancedAudio.reset();
@@ -2805,7 +2821,9 @@ async function refreshInteractionAccess(request = false) {
     button.hidden = !access.available || interactionReady;
     button.textContent = "Allow access";
     if (request && !interactionReady && access.available)
-      toast("Allow Open Record Studio in Privacy & Security, then return here.");
+      toast(
+        "Allow Open Record Studio in Privacy & Security, then return here.",
+      );
   } catch {
     notice.hidden = false;
     status.textContent = "Access check failed";
@@ -3515,7 +3533,10 @@ if (api)
       );
     if (status.project) await load(status.project);
   });
-else toast("Launch Open Record Studio as a desktop app to record, import, and export.");
+else
+  toast(
+    "Launch Open Record Studio as a desktop app to record, import, and export.",
+  );
 window.addEventListener("beforeunload", (event) => {
   if (dirty) {
     event.preventDefault();
