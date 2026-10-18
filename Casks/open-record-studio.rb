@@ -1,6 +1,6 @@
 cask "open-record-studio" do
-  version "0.2.0"
-  sha256 "3411c510a368301e6b6b300548007e87c160d7d62fa4858541608a7d860e2b3a"
+  version "0.3.0"
+  sha256 "0098274d17aa1959f72aea52ec6355b31542b55b34602a1cc90524e4f4ea44be"
 
   url "https://github.com/vinipace/open-record-studio/releases/download/v#{version}/Open-Record-Studio-#{version}-macOS-arm64.dmg"
   name "Open Record Studio"
