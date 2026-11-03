@@ -1200,6 +1200,68 @@ input[type="number"] {
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+#copy-transcript {
+  position: relative;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease;
+}
+.transcript-copy-label {
+  transition: opacity 120ms ease;
+}
+.transcript-copy-success {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  opacity: 0;
+  transform: translateY(3px);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+  pointer-events: none;
+}
+#copy-transcript.is-copied {
+  color: #a4e3bc;
+  background: #203b2d;
+  border-color: #477458;
+  animation: transcript-copy-pop 240ms ease-out;
+}
+.is-copied .transcript-copy-label {
+  opacity: 0;
+}
+.is-copied .transcript-copy-success {
+  opacity: 1;
+  transform: translateY(0);
+}
+.is-copied .transcript-copy-success path {
+  stroke-dasharray: 22;
+  animation: transcript-check-draw 240ms ease-out;
+}
+@keyframes transcript-copy-pop {
+  50% {
+    transform: scale(1.035);
+  }
+}
+@keyframes transcript-check-draw {
+  from {
+    stroke-dashoffset: 22;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #copy-transcript,
+  .transcript-copy-label,
+  .transcript-copy-success,
+  .is-copied .transcript-copy-success path {
+    animation: none !important;
+    transition: none;
+  }
+}
 .switch {
   margin-left: auto;
   display: flex;

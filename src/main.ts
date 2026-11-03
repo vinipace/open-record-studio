@@ -80,6 +80,7 @@ import {
 const icon = (name: string, size = 18) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${({ image: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 16 5-5 5 5 3-3 5 5"/>', volume: '<path d="m11 4-6 5H2v6h3l6 5zM16 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>', redo: '<path d="M21 6H10a7 7 0 0 0 0 14M21 6l-5-5m5 5-5 5"/>', end: '<path d="m6 5 10 7-10 7zM19 5v14"/>', start: '<path d="m18 5-10 7 10 7zM5 5v14"/>', screen: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/>', camera: '<rect x="3" y="5" width="13" height="14" rx="3"/><path d="m16 10 5-3v10l-5-3"/>', mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/>', play: '<path d="m8 5 11 7-11 7z" fill="currentColor"/>', pause: '<path d="M8 5v14M16 5v14" stroke-width="4"/>', folder: '<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>', upload: '<path d="M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5"/>', download: '<path d="M12 3v13m-5-5 5 5 5-5M4 17v4h16v-4"/>', cut: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="m8 8 12 12M8 16 20 4"/>', trash: '<path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/>', undo: '<path d="M3 10h11a7 7 0 0 1 0 14M3 10l5-5m-5 5 5 5" transform="translate(0 -4)"/>', save: '<path d="M5 3h12l4 4v14H3V3h2zM7 3v6h10V3M7 21v-8h10v8"/>', plus: '<path d="M12 5v14M5 12h14"/>', sliders: '<path d="M4 7h5m4 0h7M4 17h10m4 0h2"/><circle cx="11" cy="7" r="2"/><circle cx="16" cy="17" r="2"/>', close: '<path d="m6 6 12 12M18 6 6 18"/>', check: '<path d="m5 12 4 4L19 6"/>', layers: '<path d="m12 3 10 5-10 5L2 8zm-9 10 9 5 9-5m-18 5 9 5 9-5"/>', stop: '<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>', bolt: '<path d="m13 2-9 12h7l-1 8 10-13h-7z"/>' } as Record<string, string>)[name] || ""}</svg>`;
 const api = window.studio;
+let transcriptFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
 const transcript = new Transcript(updateTranscriptStatus);
 const $ = <T extends Element = HTMLElement>(s: string) =>
   document.querySelector<T>(s)!;
@@ -241,13 +242,12 @@ $("#app").innerHTML = `
   <section><h3>Synchronization</h3><div class="field-row"><label for="cameraOffset">Camera offset</label><div class="unit-input"><input id="cameraOffset" type="number" step="0.01" min="-60" max="60" value="0"/><span>s</span></div></div></section>
 </div>
 <div id="panel-audio" class="settings-panel" role="tabpanel" aria-labelledby="tab-audio" hidden>
-  <section class="transcript-section"><h3>Transcript</h3><button id="copy-transcript" class="secondary" disabled>Copy transcript</button><button id="cancel-transcript" class="text-button" hidden>Cancel</button><p class="audio-model-note">Transcribes the edited audio on your Mac. First use downloads a speech model.</p><p id="transcript-status" role="status" hidden></p></section>
   <section class="audio-enhancement"><h3><label for="enhanceAudio">Enhance Audio</label><label class="switch" title="Reduce background noise in speech"><input id="enhanceAudio" type="checkbox"/><span></span></label></h3>
     <details id="audio-advanced"><summary>Advanced</summary><label class="audio-model-label" for="audioEnhancementModel">Model</label><select id="audioEnhancementModel" aria-describedby="audio-model-description">${audioModels.map((model) => `<option value="${model.id}">${model.name}</option>`).join("")}</select><p id="audio-model-description"></p><p class="audio-model-note">Applies to preview and export. Your audio stays on this Mac.</p></details>
     <div id="enhance-audio-status" role="status" hidden></div><button id="retry-enhance-audio" class="text-button" hidden>Retry</button></section>
   <section><h3>${icon("screen", 16)}Screen audio</h3><label class="range-label" for="volume">Volume <output id="volume-value">100%</output></label><input id="volume" type="range" min="0" max="1" step="0.05" value="1"/></section>
   <section><h3>${icon("mic", 16)}Microphone</h3><label class="range-label" for="microphoneVolume">Volume <output id="microphoneVolume-value">100%</output></label><input id="microphoneVolume" type="range" min="0" max="1" step="0.05" value="1"/></section>
-
+  <section class="transcript-section"><h3>Transcript</h3><button id="copy-transcript" class="secondary" aria-label="Copy transcript" aria-live="polite" disabled><span class="transcript-copy-label">Copy transcript</span><span class="transcript-copy-success" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4 10-10"/></svg>Copied</span></button><button id="cancel-transcript" class="text-button" hidden>Cancel</button><p id="transcript-status" role="status" hidden></p></section>
 </div>
 <div id="panel-motion" class="settings-panel" role="tabpanel" aria-labelledby="tab-motion" hidden>
 <section class="zoom-editor">
@@ -2567,10 +2567,25 @@ function updateTranscriptStatus() {
         (asset) => asset.audio && asset.timeMap,
       ));
   button.disabled = !hasAudio || busy || !!recordId || transcript.pending;
-  button.textContent = transcript.pending ? "Transcribing…" : "Copy transcript";
+  const copied = transcript.message === "Transcript copied.";
+  if (!copied && transcriptFeedbackTimer) {
+    clearTimeout(transcriptFeedbackTimer);
+    transcriptFeedbackTimer = null;
+  }
+  if (copied && !transcriptFeedbackTimer) {
+    transcriptFeedbackTimer = setTimeout(() => {
+      transcriptFeedbackTimer = null;
+      transcript.message = "";
+      updateTranscriptStatus();
+    }, 1800);
+  }
+  const label = transcript.pending ? "Transcribing…" : "Copy transcript";
+  button.querySelector(".transcript-copy-label")!.textContent = label;
+  button.setAttribute("aria-label", copied ? "Transcript copied" : label);
+  button.classList.toggle("is-copied", copied);
   $("#cancel-transcript").hidden = !transcript.pending;
-  $("#transcript-status").hidden = !transcript.message;
-  $("#transcript-status").textContent = transcript.message;
+  $("#transcript-status").hidden = copied || !transcript.message;
+  $("#transcript-status").textContent = copied ? "" : transcript.message;
 }
 $("#copy-transcript").onclick = () => {
   if (!project || !edits || busy || recordId) return;
