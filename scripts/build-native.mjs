@@ -10,6 +10,7 @@ execFileSync(
     "-target",
     `${process.arch === "arm64" ? "arm64" : "x86_64"}-apple-macosx15.0`,
     "native/Capture.swift",
+    "native/CaptureEncoding.swift",
     "native/Interactions.swift",
     "-o",
     "native/bin/frame-capture",

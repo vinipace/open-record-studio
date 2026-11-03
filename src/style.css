@@ -2879,3 +2879,24 @@ dialog::backdrop {
   --event-border: #b98264;
   --event-active: #83573f;
 }
+
+.capture-quality {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  margin-top: 16px;
+}
+.capture-quality label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+.capture-quality select {
+  width: 100%;
+}
+.capture-quality p {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}

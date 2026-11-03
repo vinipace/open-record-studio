@@ -1,3 +1,4 @@
+import { recordingExtension } from "./recording-options.mjs";
 import {
   recordingPreferences,
   updateRecordingPreferences,
@@ -443,7 +444,7 @@ handle("begin", async () => {
     queues: {},
     errors: [],
     startedAt: Date.now(),
-    autoZoom: (await recordingPreferences(app.getPath("userData"))).autoZoom,
+    ...(await recordingPreferences(app.getPath("userData"))),
   };
   recordingUI(true);
   return { id };
@@ -507,7 +508,7 @@ handle("finishTake", async (id, samples) => {
       "-nostdin",
       "-n",
       "-i",
-      path.join(rec.directory, "camera.webm"),
+      rawTrackPath(rec, "camera"),
       "-map",
       "0",
       "-c",
@@ -571,7 +572,7 @@ handle("finishTake", async (id, samples) => {
         "The project changed while recording. The take is kept for recovery.",
       );
     await saveProject(p);
-    await fs.unlink(path.join(rec.directory, "camera.webm")).catch(() => {});
+    await fs.unlink(rawTrackPath(rec, "camera")).catch(() => {});
     await fs.unlink(path.join(rec.directory, "recovery.json")).catch(() => {});
     return { project: publicProject(p), layerId };
   } finally {
@@ -587,6 +588,7 @@ handle("startNative", async (id, audio) => {
     source: sourceTargets.get(selectedSource) || selectedSource,
     output: path.join(rec.directory, "screen.mp4"),
     audio: Boolean(audio),
+    capture: rec.capture,
     excludeApplicationPIDs: [process.pid],
   });
   rec.native.done.catch((error) => {
@@ -675,7 +677,9 @@ handle("resizeRecordingPreview", (gesture) => {
     if (gesture.phase !== "move") previewResize = null;
   }
 });
-handle("append", async (id, track, bytes) => {
+const rawTrackPath = (rec, track) =>
+  path.join(rec.directory, `${track}.${rec.extensions?.[track] || "webm"}`);
+handle("append", async (id, track, bytes, mimeType) => {
   const rec = recording;
   if (
     !rec ||
@@ -685,12 +689,14 @@ handle("append", async (id, track, bytes) => {
     bytes.byteLength > 32 * 1024 * 1024
   )
     throw new Error("Invalid recording chunk");
+  const extension = recordingExtension(mimeType);
+  rec.extensions ||= {};
+  if (rec.extensions[track] && rec.extensions[track] !== extension)
+    throw new Error("Recording container changed during capture");
+  rec.extensions[track] = extension;
   const previous = rec.queues[track] || Promise.resolve();
   const job = previous.then(() =>
-    fs.appendFile(
-      path.join(rec.directory, track + ".webm"),
-      Buffer.from(bytes),
-    ),
+    fs.appendFile(rawTrackPath(rec, track), Buffer.from(bytes)),
   );
   rec.queues[track] = job.catch((error) => {
     rec.errors.push(error.message);
@@ -754,9 +760,9 @@ handle("finish", async (id, metadata) => {
       if (rec.queues[key]) {
         const stamp = metadata[key]?.startedAt;
         if (!Number.isFinite(stamp)) throw new Error("Missing track clock");
-        const raw = path.join(rec.directory, key + ".webm"),
+        const raw = rawTrackPath(rec, key),
           final = path.join(rec.directory, key + ".mkv");
-        // Remux finalizes WebM durations and indexes without re-encoding media.
+        // Remux finalizes MP4/WebM durations and indexes without re-encoding media.
         await run(await binary("ffmpeg"), [
           "-v",
           "error",
@@ -788,8 +794,8 @@ handle("finish", async (id, metadata) => {
       interactions,
       rec.autoZoom,
     );
-    for (const key of Object.keys(tracks))
-      await fs.unlink(path.join(rec.directory, key + ".webm")).catch(() => {});
+    for (const key of Object.keys(rec.queues))
+      await fs.unlink(rawTrackPath(rec, key)).catch(() => {});
     return result;
   } finally {
     recording = null;

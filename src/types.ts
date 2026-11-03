@@ -217,7 +217,12 @@ declare global {
       recordingReady: () => Promise<void>;
       hideRecordingPreview: () => Promise<void>;
       resizeRecordingPreview: (gesture: PreviewResize) => Promise<void>;
-      append: (id: string, track: string, bytes: ArrayBuffer) => Promise<void>;
+      append: (
+        id: string,
+        track: string,
+        bytes: ArrayBuffer,
+        mimeType?: string,
+      ) => Promise<void>;
       finish: (
         id: string,
         metadata: Record<string, { startedAt: number }>,

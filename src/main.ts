@@ -7,6 +7,8 @@ import {
 } from "./recording-preferences";
 import {
   defaultAutoZoom,
+  captureOptions,
+  cameraRecordingType,
   type AutoZoomOptions,
 } from "../desktop/recording-options.mjs";
 import { exportProgressText } from "./export-progress";
@@ -276,6 +278,11 @@ $("#app").innerHTML = `
     <div class="capture-input">${icon("camera", 17)}<label for="record-camera">Camera</label><select id="record-camera"><option value="">Off</option></select></div>
     <div class="capture-input">${icon("mic", 17)}<label for="record-microphone">Microphone</label><select id="record-microphone"><option value="">Off</option></select></div>
     <div class="capture-input">${icon("volume", 17)}<label for="record-system">System audio</label><label class="switch" title="Include sound from your Mac"><input type="checkbox" id="record-system" aria-label="System audio"/><span></span></label></div>
+  </div>
+  <div class="capture-quality">
+    <label>Screen resolution<select id="record-height"><option value="720">720p</option><option value="1080">1080p</option><option value="2160" selected>4K</option><option value="0">Original resolution</option></select></label>
+    <label>Frame rate<select id="record-fps"><option value="30" selected>30 fps</option><option value="60">60 fps</option></select></label>
+    <p>30 fps uses less power. Higher resolutions preserve more detail when zooming.</p>
   </div>
   <p id="record-camera-error" role="alert" hidden></p>
   <details class="record-advanced"><summary>Advanced ${icon("sliders", 14)}</summary><div class="auto-zoom-heading">Automatic zooms</div><div class="auto-zoom-options">${Object.entries(
@@ -2949,6 +2956,21 @@ async function refreshCaptureSources() {
   }
 }
 $("#refresh-sources").onclick = () => void refreshCaptureSources();
+for (const id of ["record-height", "record-fps"]) {
+  $("#" + id).addEventListener(
+    "change",
+    () =>
+      void task(() =>
+        saveRecordingPreferences({
+          capture: captureOptions({
+            height: Number($<HTMLSelectElement>("#record-height").value) as
+              0 | 720 | 1080 | 2160,
+            fps: Number($<HTMLSelectElement>("#record-fps").value) as 30 | 60,
+          }),
+        }),
+      ),
+  );
+}
 async function recordDialog() {
   if (recordId || busy) return;
   pause();
@@ -2985,6 +3007,9 @@ async function recordDialog() {
       "Microphone",
     );
     $<HTMLInputElement>("#record-system").checked = preferences.systemAudio;
+    const capture = captureOptions(preferences.capture);
+    $<HTMLSelectElement>("#record-height").value = String(capture.height);
+    $<HTMLSelectElement>("#record-fps").value = String(capture.fps);
     document
       .querySelectorAll<HTMLInputElement>("[data-auto-zoom]")
       .forEach(
@@ -3099,17 +3124,14 @@ async function startRecording() {
     for (const key of ["screen", "camera", "microphone"]) {
       const stream = captures[key];
       if (!stream) continue;
-      const types =
+      const mimeType =
         key === "microphone"
-          ? ["audio/webm;codecs=opus", "audio/webm"]
-          : [
-              "video/webm;codecs=vp9,opus",
-              "video/webm;codecs=vp8,opus",
-              "video/webm",
-            ];
-      const mimeType = types.find((t) => MediaRecorder.isTypeSupported(t));
+          ? ["audio/webm;codecs=opus", "audio/webm"].find((t) =>
+              MediaRecorder.isTypeSupported(t),
+            )
+          : cameraRecordingType((t) => MediaRecorder.isTypeSupported(t));
       if (!mimeType)
-        throw new Error("This runtime has no supported recording codec");
+        throw new Error("This runtime has no supported audio recording codec");
       const recorder = new MediaRecorder(stream, {
         mimeType,
         ...(key === "microphone"
@@ -3121,7 +3143,12 @@ async function startRecording() {
         const id = recordId;
         writeQueue = writeQueue
           .then(async () => {
-            await api.append(id, key, await e.data.arrayBuffer());
+            await api.append(
+              id,
+              key,
+              await e.data.arrayBuffer(),
+              recorder.mimeType,
+            );
           })
           .catch((e) => {
             recordError = String(e);

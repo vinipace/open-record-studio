@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { stripTypeScriptTypes } from "node:module";
 import vm from "node:vm";
+import { cameraRecordingType } from "../desktop/recording-options.mjs";
 
 // Controller checks use fake devices and clocks. No app, camera or UI E2E run.
 const source = stripTypeScriptTypes(
@@ -98,6 +99,10 @@ function setup({ rejectMicrophone = false, rejectAppend = false } = {}) {
     }
   }
   class Recorder extends EventTarget {
+    constructor(stream, options) {
+      super();
+      this.mimeType = options.mimeType;
+    }
     static isTypeSupported() {
       return true;
     }
@@ -135,6 +140,7 @@ function setup({ rejectMicrophone = false, rejectAppend = false } = {}) {
     },
   };
   const context = {
+    cameraRecordingType,
     loadRecordingPreferences: async () => ({
       camera: null,
       microphone: { deviceId: "mic" },
@@ -247,6 +253,10 @@ test("recording plays the existing video and waits for the final chunk before in
   await s.controller.stop();
   const names = s.calls.map((c) => c[0]);
   assert.ok(names.indexOf("append") < names.indexOf("finish"));
+  assert.equal(
+    s.calls.find((c) => c[0] === "append")[4],
+    "video/mp4;codecs=avc1.640028,mp4a.40.2",
+  );
   const finish = s.calls.find((c) => c[0] === "finish");
   assert.equal(finish[2][0].output, 2);
   assert.ok(Math.abs(finish[2][0].media - 0.3) < 0.001);
