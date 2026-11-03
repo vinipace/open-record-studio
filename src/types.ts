@@ -158,6 +158,16 @@ export type PreviewResize = {
 declare global {
   interface Window {
     studio: {
+      transcribe: (
+        id: string,
+        edits: Edits,
+        requestId: string,
+      ) => Promise<string>;
+      cancelTranscription: (id: string, requestId: string) => Promise<void>;
+      copyTranscript: (text: string) => Promise<void>;
+      onTranscriptProgress: (
+        fn: (data: { requestId: string; message: string }) => void,
+      ) => () => void;
       enhanceAudio: (
         id: string,
         model: Style["audioEnhancementModel"],

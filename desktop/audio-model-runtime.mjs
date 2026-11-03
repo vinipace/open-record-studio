@@ -78,7 +78,7 @@ export function runAudioProcess(
   });
 }
 
-async function prepareUv(root, { signal, onStatus }) {
+export async function prepareUv(root, { signal, onStatus }) {
   const executable = path.join(root, `uv-${uvVersion}`, "uv");
   if ((await stat(executable).catch(() => null))?.size) return executable;
   if (process.platform !== "darwin" || process.arch !== "arm64")

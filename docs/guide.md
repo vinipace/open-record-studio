@@ -65,6 +65,12 @@ Files are copied into the project's `assets/` folder. Removing a layer preserves
 
 The Audio lane shows real decoded waveforms for screen audio and microphone audio. With both sources, screen audio is the upper band and microphone audio the lower band; hover a clip for the labels. Silence stays flat, and volume, source offsets, cuts, trims, playback speed and timeline magnification are reflected in the display. Waveforms load in the background, with cached peak data and persistent canvases so selection and playback do not rebuild them. Existing projects get waveforms when reopened; no migration or re-recording is needed.
 
+## Copy a transcript
+
+In **Audio → Transcript**, click **Copy transcript** to transcribe the edited audio and copy the text. Language is detected automatically. Cuts, removed audio, volume, and webcam-take audio follow the composition; recognition runs at the original speech speed. Empty audio leaves the clipboard unchanged. You can cancel, and changing the project or its edits discards an unfinished result.
+
+Transcription runs locally on Apple silicon. First use downloads the speech tools and an approximately 500 MB Whisper model; later requests reuse them, and unchanged transcripts are cached. Audio is never uploaded. Review the text for recognition errors before sharing it.
+
 ## Canvas ratios and social templates
 
 New recordings and imports default to **Source**, matching the recorded screen/window or imported media's proportions in preview and export. In **Canvas → Format**, select Instagram Reels/Story/portrait/square, TikTok, YouTube/Shorts, or Presentation. Or choose 16:9, 9:16, 1:1, 4:5, 4:3, 3:4, or **Source**. Templates are size presets; platform upload limits are not enforced. **Fit** shows the full source within the background, while **Fill** crops it to cover the padded canvas. These settings support undo, save/reopen, MCP previews, MP4 and GIF.

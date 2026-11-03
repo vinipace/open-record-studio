@@ -40,6 +40,7 @@ import {
 } from "./media.mjs";
 import { serveMedia } from "./serve-media.mjs";
 import { enhanceProjectAudio } from "./enhance-audio.mjs";
+import { transcribeProject } from "./transcript.mjs";
 import { audioModel } from "./audio-models.mjs";
 import { startCapture } from "./native-capture.mjs";
 import { resizePreviewBounds } from "./preview-window.mjs";
@@ -116,9 +117,12 @@ const publicAssets = (p) =>
     ]),
   );
 let enhancementJob = null;
+let transcriptJob = null;
 const enhancedFiles = new Map();
 function publicProject(p) {
   current = p;
+  if (transcriptJob && transcriptJob.id !== p.id)
+    transcriptJob.controller.abort();
   if (!p.id) p.id = randomUUID();
   if (waveformJob && waveformJob.id !== p.id) {
     waveformJob.controller.abort();
@@ -240,7 +244,41 @@ handle("cancelEnhanceAudio", (id, requestId) => {
   )
     enhancementJob.controller.abort();
 });
+handle("transcribe", async (id, edits, requestId) => {
+  ensureIdle();
+  if (!current || current.id !== id)
+    throw new Error("Open this project before transcribing");
+  if (typeof requestId !== "string" || requestId.length > 80)
+    throw new Error("Invalid transcription request");
+  transcriptJob?.controller.abort();
+  const job = { id, requestId, controller: new AbortController() };
+  transcriptJob = job;
+  try {
+    return await transcribeProject(current, edits, {
+      signal: job.controller.signal,
+      onStatus: (message) => {
+        if (transcriptJob === job && !win?.isDestroyed())
+          win?.webContents.send("frame:transcript-progress", {
+            requestId,
+            message,
+          });
+      },
+    });
+  } finally {
+    if (transcriptJob === job) transcriptJob = null;
+  }
+});
+handle("cancelTranscription", (id, requestId) => {
+  if (transcriptJob?.id === id && transcriptJob.requestId === requestId)
+    transcriptJob.controller.abort();
+});
+handle("copyTranscript", (text) => {
+  if (typeof text !== "string" || !text.trim() || text.length > 2_000_000)
+    throw new Error("No transcript to copy");
+  clipboard.writeText(text);
+});
 app.on("before-quit", () => {
+  transcriptJob?.controller.abort();
   waveformJob?.controller.abort();
   for (const job of assetWaveformJobs.values()) job.controller.abort();
   enhancementJob?.controller.abort();
@@ -433,6 +471,7 @@ handle("updateRecordingPreferences", (patch) =>
 );
 handle("begin", async () => {
   ensureIdle();
+  transcriptJob?.controller.abort();
   requireInteractionAccess(await interactionAccess());
   await binary("ffmpeg");
   const directory = await newLocation();
@@ -451,6 +490,7 @@ handle("begin", async () => {
 });
 handle("beginTake", async (projectId, revision) => {
   ensureIdle();
+  transcriptJob?.controller.abort();
   if (
     !current ||
     current.id !== projectId ||

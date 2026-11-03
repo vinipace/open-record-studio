@@ -12,7 +12,9 @@ execFileSync(process.execPath, ["scripts/build-native.mjs"], {
   stdio: "inherit",
 });
 const root = process.cwd(),
-  release = path.join(root, "release"),
+  release = process.env.FRAME_RELEASE_DIR
+    ? path.resolve(process.env.FRAME_RELEASE_DIR)
+    : path.join(root, "release"),
   final = path.join(release, `${productName}.app`);
 const pkg = JSON.parse(
   await fs.readFile(path.join(root, "package.json"), "utf8"),

@@ -1192,7 +1192,8 @@ input[type="number"] {
   line-height: 1.5;
   margin: 8px 0 0;
 }
-#enhance-audio-status {
+#enhance-audio-status,
+#transcript-status {
   color: var(--muted);
   font-size: 12px;
   margin-top: 8px;
