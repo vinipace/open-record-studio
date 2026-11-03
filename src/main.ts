@@ -2815,6 +2815,7 @@ let refreshingInteractionAccess = false,
   recordingDialogRequest = 0;
 let sourceFilter: "screen" | "window" = "screen";
 function updateRecordingAvailability() {
+  updateTranscriptStatus();
   const start = $<HTMLButtonElement>("#start-record");
   start.disabled =
     !sourceId ||
@@ -3084,6 +3085,8 @@ async function startRecording() {
   if (!sourceId || !(await canReplace()) || !(await refreshInteractionAccess()))
     return;
   busy = true;
+  transcript.configure(project, edits, true);
+  updateTranscriptStatus();
   for (const el of document.querySelectorAll<HTMLInputElement>(
     "#record-dialog select, #record-dialog input, #record-dialog .close-dialog, #record-use-media",
   ))
@@ -3290,6 +3293,7 @@ async function stopRecording() {
     nativeRecording = false;
     stopping = false;
     $("#recording-banner").hidden = true;
+    update();
   }
 }
 const webcamTake = new WebcamTake({
