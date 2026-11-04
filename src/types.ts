@@ -158,6 +158,13 @@ export type PreviewResize = {
 declare global {
   interface Window {
     studio: {
+      appUpdateState: () => Promise<import("./app-updates").AppUpdateState>;
+      checkAppUpdate: () => Promise<void>;
+      installAppUpdate: () => Promise<void>;
+      onAppUpdate: (
+        fn: (state: import("./app-updates").AppUpdateState) => void,
+      ) => () => void;
+      onInstallAppUpdate: (fn: () => void) => () => void;
       transcribe: (
         id: string,
         edits: Edits,

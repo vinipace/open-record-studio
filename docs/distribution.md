@@ -85,13 +85,37 @@ are stapled and validated, and Gatekeeper assessment must pass. An error aborts
 the release; it never silently changes to an unnotarized release.
 
 Create a GitHub draft release for the exact `sourceCommit` in `release.json`,
-attach the six generated files, and verify their downloaded SHA-256 hashes before
+attach the seven generated files, and verify their downloaded SHA-256 hashes before
 publishing. Mark unnotarized builds as previews. Copy the generated
 `open-record-studio.rb` into `Casks/` and commit it on `main` after building; its
 checksum pins the DMG. Keep the release tag on the build's source commit. Homebrew
 uses this repository as an explicit tap and installs FFmpeg as a dependency.
 
 See [installation instructions](install.md).
+
+### In-app update metadata
+
+Release creation generates `RELEASES.json` alongside the signed ZIP. Upload it to
+the same GitHub release, with the exact filenames produced by the script. It
+contains the release version, versioned ZIP URL, byte size and SHA-256 digest.
+This is Electron/Squirrel.Mac's static JSON feed (`serverType: "json"`); no separate
+update server, GitHub token, or bundled update dependency is required.
+
+The app reads the public GitHub release list, ignores drafts, compares numeric
+versions, and follows the user's preview preference. Download begins only after
+the user chooses it. The feed is checked against the selected release and GitHub
+asset metadata before passing it to Electron. Squirrel validates the ZIP digest
+and app signature; keep the bundle identifier and Developer ID identity stable.
+Never republish different app bytes under the same version. Bump the package and
+lockfile versions for every release. A release without update metadata is offered
+as a manual GitHub download, rather than incorrectly reported as up to date.
+
+Create the release as a draft, upload and verify all assets, then publish it.
+Unnotarized builds must remain previews. Existing 0.1–0.3 installs need one manual
+upgrade to acquire the updater; later compatible releases update inside the app.
+
+References: [Electron updates](https://www.electronjs.org/docs/latest/tutorial/updates)
+and [autoUpdater](https://www.electronjs.org/docs/latest/api/auto-updater).
 
 ## Artwork and model sources
 

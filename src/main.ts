@@ -16,6 +16,7 @@ import { WebcamTake } from "./webcam-take";
 import { CutMedia } from "./cut-media";
 import { EnhancedAudio } from "./enhanced-audio";
 import { Transcript } from "./transcript";
+import { connectAppUpdates } from "./app-updates";
 import { audioModels, audioModel } from "../desktop/audio-models.mjs";
 import { attachTooltips } from "./tooltips";
 import "./style.css";
@@ -188,7 +189,7 @@ $("#app").innerHTML = `
 <header class="titlebar">
   <div class="brand"><span class="brand-mark">${icon("layers", 17)}</span><span>Open Record Studio</span></div>
   <div class="project-heading"><span class="title-divider"></span><div id="project-title" role="button" tabindex="-1" title="Double-click to rename">Untitled recording</div><input id="project-name" aria-label="Project name" maxlength="120" autocomplete="off" spellcheck="false" hidden/></div>
-  <div class="header-actions"><button id="new-recording" class="subtle" data-tooltip="Recording options">${icon("plus", 16)}<span>Record</span></button><button id="add-media" class="subtle" data-tooltip="Add images or videos to this project" disabled>＋ Add media</button><button id="import" class="icon-button" data-tooltip="Start a project from a video or image" aria-label="Import media">${icon("download", 17)}</button><button id="open" class="icon-button" data-tooltip="Open a project" aria-label="Open project">${icon("folder", 17)}</button><span class="action-divider"></span><button id="save" class="icon-button" data-tooltip="Save project" data-shortcut="⌘S" aria-keyshortcuts="Meta+S" aria-label="Save project" disabled>${icon("save", 17)}</button><button id="export" class="primary" data-tooltip="Export video or GIF" disabled>${icon("upload", 16)}Export video</button></div>
+  <div class="header-actions"><button id="app-update" class="secondary" hidden>Update available</button><button id="new-recording" class="subtle" data-tooltip="Recording options">${icon("plus", 16)}<span>Record</span></button><button id="add-media" class="subtle" data-tooltip="Add images or videos to this project" disabled>＋ Add media</button><button id="import" class="icon-button" data-tooltip="Start a project from a video or image" aria-label="Import media">${icon("download", 17)}</button><button id="open" class="icon-button" data-tooltip="Open a project" aria-label="Open project">${icon("folder", 17)}</button><span class="action-divider"></span><button id="save" class="icon-button" data-tooltip="Save project" data-shortcut="⌘S" aria-keyshortcuts="Meta+S" aria-label="Save project" disabled>${icon("save", 17)}</button><button id="export" class="primary" data-tooltip="Export video or GIF" disabled>${icon("upload", 16)}Export video</button></div>
 </header>
 <main class="workspace">
 <section class="editor">
@@ -3350,6 +3351,20 @@ const webcamTake = new WebcamTake({
     seek(time);
     update();
     toast("Webcam take added at " + clock(time));
+  },
+  error,
+});
+connectAppUpdates($<HTMLButtonElement>("#app-update"), {
+  activity: () => ({
+    recording: !!recordId || webcamTake.active,
+    busy,
+    dirty,
+    saving,
+    renaming: !!renaming || !$<HTMLInputElement>("#project-name").hidden,
+  }),
+  lock: (value) => {
+    busy = value;
+    update();
   },
   error,
 });

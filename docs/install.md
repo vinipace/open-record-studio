@@ -20,6 +20,24 @@ by Apple. macOS may block its first launch. Review the source and signing identi
 before deciding whether to allow it in **System Settings → Privacy & Security**.
 Do not disable Gatekeeper. Future notarized releases will say so explicitly.
 
+## In-app updates
+
+Starting with 0.4.0, choose **Open Record Studio → Check for Updates…** in the
+macOS menu bar. The app also checks quietly after launch and every six hours
+when no recording, export, or audio processing is running. An **Update available**
+button appears when a newer GitHub release is ready.
+
+Choose **Download update**, then **Restart to update** when convenient. A downloaded
+update also installs on your next normal quit. The app checks the release metadata,
+and macOS verifies the signed app before replacement. Save unsaved edits and finish
+recording/exporting before choosing Restart to update. Projects and preferences stay
+in their existing locations.
+
+**Include Preview Releases** is enabled by default because current releases use the
+preview channel. Turn it off in the app menu to receive only stable releases. Old
+versions without the updater need one manual installation of 0.4.0 or later. New
+GitHub releases must include the generated `RELEASES.json` and matching signed ZIP.
+
 ## Homebrew
 
 Install the app and its media tools with:
