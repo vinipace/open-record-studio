@@ -595,7 +595,9 @@ export function exportArgs(
     mode === "screen" &&
     screenRender.height === height;
   let video;
-  if (copyScreen) {
+  if (mode === "audio") {
+    // Transcription only decodes the edited audio, never the video composition.
+  } else if (copyScreen) {
     // The GPU already produced the final screen frames. Mux system audio
     // without decoding or encoding this video a second time.
   } else if (mode === "camera") {
@@ -776,7 +778,7 @@ export function exportArgs(
       base = out;
     }
   }
-  if (mode === "camera" && options.audio) {
+  if ((mode === "camera" || mode === "audio") && options.audio) {
     for (const [i, layer] of activeLayers.entries()) {
       const asset = project.assets[layer.assetId];
       if (!asset.timeMap || !asset.audio || (layer.volume ?? 1) <= 0) continue;
@@ -821,6 +823,29 @@ export function exportArgs(
         `amix=inputs=${audios.length}:duration=longest:normalize=0,alimiter=limit=0.95:level=0[aout]`,
     );
   else if (audios.length === 1) filters.push(`[${audios[0]}]anull[aout]`);
+  if (mode === "audio") {
+    if (!audios.length)
+      throw new Error("This project has no audio to transcribe");
+    args.push(
+      "-filter_complex_threads",
+      "2",
+      "-filter_complex",
+      filters.join(";"),
+      "-map",
+      "[aout]",
+      "-vn",
+      "-ac",
+      "1",
+      "-ar",
+      "16000",
+      "-c:a",
+      "pcm_s16le",
+      "-t",
+      String(duration),
+      destination,
+    );
+    return args;
+  }
   if (filters.length) args.push("-filter_complex", filters.join(";"));
   args.push("-map", copyScreen ? `${renderedIndex}:v:0` : "[vout]");
   if (audios.length) args.push("-map", "[aout]", "-c:a", "aac", "-b:a", "192k");

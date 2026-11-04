@@ -7,6 +7,28 @@ contextBridge.exposeInMainWorld(
   "studio",
   Object.freeze({
     status: invoke("status"),
+    appUpdateState: invoke("appUpdateState"),
+    checkAppUpdate: invoke("checkAppUpdate"),
+    installAppUpdate: invoke("installAppUpdate"),
+    onAppUpdate: (fn) => {
+      const listener = (_, data) => fn(data);
+      ipcRenderer.on("frame:update-state", listener);
+      return () => ipcRenderer.removeListener("frame:update-state", listener);
+    },
+    onInstallAppUpdate: (fn) => {
+      const listener = () => fn();
+      ipcRenderer.on("frame:install-update", listener);
+      return () => ipcRenderer.removeListener("frame:install-update", listener);
+    },
+    transcribe: invoke("transcribe"),
+    cancelTranscription: invoke("cancelTranscription"),
+    copyTranscript: invoke("copyTranscript"),
+    onTranscriptProgress: (fn) => {
+      const listener = (_, data) => fn(data);
+      ipcRenderer.on("frame:transcript-progress", listener);
+      return () =>
+        ipcRenderer.removeListener("frame:transcript-progress", listener);
+    },
     waveforms: invoke("waveforms"),
     assetWaveform: invoke("assetWaveform"),
     enhanceAudio: invoke("enhanceAudio"),

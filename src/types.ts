@@ -158,6 +158,23 @@ export type PreviewResize = {
 declare global {
   interface Window {
     studio: {
+      appUpdateState: () => Promise<import("./app-updates").AppUpdateState>;
+      checkAppUpdate: () => Promise<void>;
+      installAppUpdate: () => Promise<void>;
+      onAppUpdate: (
+        fn: (state: import("./app-updates").AppUpdateState) => void,
+      ) => () => void;
+      onInstallAppUpdate: (fn: () => void) => () => void;
+      transcribe: (
+        id: string,
+        edits: Edits,
+        requestId: string,
+      ) => Promise<string>;
+      cancelTranscription: (id: string, requestId: string) => Promise<void>;
+      copyTranscript: (text: string) => Promise<void>;
+      onTranscriptProgress: (
+        fn: (data: { requestId: string; message: string }) => void,
+      ) => () => void;
       enhanceAudio: (
         id: string,
         model: Style["audioEnhancementModel"],
@@ -217,7 +234,12 @@ declare global {
       recordingReady: () => Promise<void>;
       hideRecordingPreview: () => Promise<void>;
       resizeRecordingPreview: (gesture: PreviewResize) => Promise<void>;
-      append: (id: string, track: string, bytes: ArrayBuffer) => Promise<void>;
+      append: (
+        id: string,
+        track: string,
+        bytes: ArrayBuffer,
+        mimeType?: string,
+      ) => Promise<void>;
       finish: (
         id: string,
         metadata: Record<string, { startedAt: number }>,

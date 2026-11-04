@@ -1,3 +1,4 @@
+import { cameraRecordingType } from "../desktop/recording-options.mjs";
 import {
   loadRecordingPreferences,
   saveRecordingPreferences,
@@ -183,11 +184,10 @@ export class WebcamTake {
         ...this.camera.getVideoTracks(),
         ...(this.microphone?.getAudioTracks() || []),
       ]);
-      const mimeType = ["video/webm;codecs=vp8,opus", "video/webm"].find(
+      const mimeType = cameraRecordingType(
         (type) => MediaRecorder.isTypeSupported(type),
+        stream.getAudioTracks().length > 0,
       );
-      if (!mimeType)
-        throw new Error("Webcam recording is unavailable in this runtime");
       const recorder = (this.recorder = new MediaRecorder(stream, {
         mimeType,
         videoBitsPerSecond: 6000000,
@@ -201,6 +201,7 @@ export class WebcamTake {
               this.id,
               "camera",
               await event.data.arrayBuffer(),
+              recorder.mimeType,
             );
           })
           .catch((error) => {

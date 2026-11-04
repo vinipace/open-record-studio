@@ -9,6 +9,10 @@ import { verifyLicenseBundle } from "./licenses.mjs";
 import { verifyMcpBundle } from "./mcp-bundle.mjs";
 import { packageFingerprint } from "./package-fingerprint.mjs";
 import assert from "node:assert/strict";
+import {
+  createUpdateManifest,
+  updateManifestName,
+} from "../desktop/update-feed.mjs";
 
 const exec = promisify(execFile);
 const run = async (command, args) =>
@@ -203,6 +207,18 @@ try {
       .digest("hex");
   const cask = `cask "open-record-studio" do\n  version "${pkg.version}"\n  sha256 "${await sha256(dmg)}"\n\n  url "https://github.com/${repo}/releases/download/v#{version}/Open-Record-Studio-#{version}-macOS-arm64.dmg"\n  name "Open Record Studio"\n  desc "Local screen and webcam recorder with synchronized video editing"\n  homepage "https://github.com/${repo}"\n\n  depends_on formula: "ffmpeg"\n  depends_on macos: :sequoia\n  depends_on arch: :arm64\n\n  app "Open Record Studio.app"\n  binary "#{appdir}/Open Record Studio.app/Contents/Resources/bin/open-record-studio-mcp"\n${preview ? '\n  caveats "This preview is signed but not notarized. macOS may block its first launch."\n' : ""}end\n`;
   await fs.writeFile(path.join(artifacts, "open-record-studio.rb"), cask);
+  await fs.writeFile(
+    path.join(artifacts, updateManifestName),
+    JSON.stringify(
+      createUpdateManifest({
+        version: pkg.version,
+        sha256: await sha256(zip),
+        size: (await fs.stat(zip)).size,
+      }),
+      null,
+      2,
+    ) + "\n",
+  );
   const manifest = {
     product: productName,
     version: pkg.version,

@@ -13,7 +13,7 @@ struct CaptureError: LocalizedError { let message: String; var errorDescription:
 
 // Cursor samples and content-free interaction metadata share the capture clock.
 @available(macOS 15.0, *)
-final class Capture: NSObject, SCStreamDelegate, SCStreamOutput, SCRecordingOutputDelegate, @unchecked Sendable {
+final class Capture: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked Sendable {
     let queue = DispatchQueue(label: "local.framestudio.capture")
     var stream: SCStream?
     var timer: DispatchSourceTimer?
@@ -21,7 +21,7 @@ final class Capture: NSObject, SCStreamDelegate, SCStreamOutput, SCRecordingOutp
     var windowID: CGWindowID?
     var samples = [[String:Any]]()
     var firstPTS: Double?
-    var recordingStarted = false
+    var writer: CaptureWriter?
     var announced = false
     var stopping = false
     var startWall = 0.0
@@ -35,7 +35,7 @@ final class Capture: NSObject, SCStreamDelegate, SCStreamOutput, SCRecordingOutp
     var excludedApplicationPIDs = [pid_t]()
 
 
-    func start(source: String, output: URL, audio: Bool, excludeApplicationPIDs: [pid_t]) async throws {
+    func start(source: String, output: URL, audio: Bool, excludeApplicationPIDs: [pid_t], settings: CaptureSettings) async throws {
         self.output=output
         cursorOutput=output.deletingLastPathComponent().appendingPathComponent("cursor.json")
         let content=try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
@@ -57,9 +57,14 @@ final class Capture: NSObject, SCStreamDelegate, SCStreamOutput, SCRecordingOutp
             bounds=window.frame;windowID=id;captureOwnerPID=window.owningApplication?.processID
         } else { throw CaptureError(message:"The selected capture source is no longer available") }
         let config=SCStreamConfiguration()
-        config.width=max(2,Int(filter.contentRect.width * CGFloat(filter.pointPixelScale))/2*2)
-        config.height=max(2,Int(filter.contentRect.height * CGFloat(filter.pointPixelScale))/2*2)
-        config.minimumFrameInterval=CMTime(value:1,timescale:60)
+        let size = settings.dimensions(width: Int(filter.contentRect.width * CGFloat(filter.pointPixelScale)),
+                                       height: Int(filter.contentRect.height * CGFloat(filter.pointPixelScale)))
+        config.width = size.width
+        config.height = size.height
+        config.minimumFrameInterval = CMTime(value: 1, timescale: Int32(settings.fps))
+        config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        config.colorSpaceName = CGColorSpace.itur_709
+        config.scalesToFit = true
         config.queueDepth=5
         config.showsCursor=false
         config.ignoreShadowsSingleWindow=true
@@ -68,15 +73,11 @@ final class Capture: NSObject, SCStreamDelegate, SCStreamOutput, SCRecordingOutp
         config.excludesCurrentProcessAudio=true
         config.sampleRate=48000
         config.channelCount=2
-        let recording=SCRecordingOutputConfiguration()
-        recording.outputURL=output
-        recording.videoCodecType = .h264
-        recording.outputFileType = .mp4
-        let destination=SCRecordingOutput(configuration:recording,delegate:self)
+        writer = try CaptureWriter(url: output, width: size.width, height: size.height, fps: settings.fps, audio: audio)
         let stream=SCStream(filter:filter,configuration:config,delegate:self)
         self.stream=stream
         try stream.addStreamOutput(self,type:.screen,sampleHandlerQueue:queue)
-        try stream.addRecordingOutput(destination)
+        if audio { try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue) }
         let timer=DispatchSource.makeTimerSource(queue:queue)
         timer.schedule(deadline:.now(),repeating:1.0/120,leeway:.milliseconds(1))
         timer.setEventHandler { [weak self] in self?.sample() }
@@ -112,44 +113,52 @@ final class Capture: NSObject, SCStreamDelegate, SCStreamOutput, SCRecordingOutp
         lastPoint=p
     }
     func announce() {
-        guard !announced,recordingStarted,let first=firstPTS else { return }
+        guard !announced,let first=firstPTS,let writer else { return }
         announced=true
         let now=CMClockGetTime(CMClockGetHostTimeClock()).seconds
         startWall=Date().timeIntervalSince1970*1000-(now-first)*1000
-        emit(["event":"started","startedAt":startWall,"captureType":captureType,"excludedApplicationPIDs":excludedApplicationPIDs,"interactions":interactions.trackingStatus])
+        emit(["event":"started","startedAt":startWall,"captureType":captureType,"excludedApplicationPIDs":excludedApplicationPIDs,"interactions":interactions.trackingStatus,"encoding":["hardwareRequired":true,"codec":writer.codec.rawValue,"width":writer.width,"height":writer.height,"fps":writer.fps]])
     }
     func stream(_ stream:SCStream,didOutputSampleBuffer buffer:CMSampleBuffer,of type:SCStreamOutputType) {
-        guard type == .screen,buffer.isValid,
-              let attachments=CMSampleBufferGetSampleAttachmentsArray(buffer,createIfNecessary:false) as? [[SCStreamFrameInfo:Any]],
-              let raw=attachments.first?[.status] as? Int,
-              SCFrameStatus(rawValue:raw) == .complete else { return }
-        if firstPTS == nil { firstPTS=CMSampleBufferGetPresentationTimeStamp(buffer).seconds;announce() }
+        guard !stopping, buffer.isValid, let writer else { return }
+        do {
+            if type == .audio { try writer.appendAudio(buffer); return }
+            guard type == .screen,
+                  let attachments=CMSampleBufferGetSampleAttachmentsArray(buffer,createIfNecessary:false) as? [[SCStreamFrameInfo:Any]],
+                  let raw=attachments.first?[.status] as? Int,
+                  SCFrameStatus(rawValue:raw) == .complete,
+                  let pixel = CMSampleBufferGetImageBuffer(buffer) else { return }
+            let pts = CMSampleBufferGetPresentationTimeStamp(buffer)
+            try writer.appendVideo(pixel, at: pts)
+            if firstPTS == nil { firstPTS = writer.firstPTS?.seconds; announce() }
+        } catch { fail(error) }
     }
-    func recordingOutputDidStartRecording(_ output:SCRecordingOutput) { queue.async { self.recordingStarted=true;self.announce() } }
-    func recordingOutput(_ output:SCRecordingOutput,didFailWithError error:Error) { fail(error) }
     func stream(_ stream:SCStream,didStopWithError error:Error) { fail(error) }
-    func recordingOutputDidFinishRecording(_ output:SCRecordingOutput) {
-        queue.async {
-            do {
-                self.timer?.cancel();self.timer=nil
-                guard let first=self.firstPTS else { throw CaptureError(message:"No screen frames were captured") }
-                let end=CMClockGetTime(CMClockGetHostTimeClock()).seconds
-                if var last=self.lastPoint {last["t"]=end;self.samples.append(last)}
-                let normalized=self.samples.filter { ($0["t"] as? Double ?? 0) >= first }.map { p -> [String:Any] in
-                    var p=p;p["t"]=(p["t"] as! Double)-first;return p
-                }
-                let data=try JSONSerialization.data(withJSONObject:["clean":true,"samples":normalized])
-                try data.write(to:self.cursorOutput,options:.atomic)
-                let interactionData = try JSONSerialization.data(withJSONObject: self.interactions.finish(first: first, end: end))
-                try interactionData.write(to: self.output.deletingLastPathComponent().appendingPathComponent("interactions.json"), options:.atomic)
-                emit(["event":"finished","startedAt":self.startWall])
-                exit(0)
-            } catch { fail(error) }
-        }
-    }
     func stop() async throws {
+        let end = CMClockGetTime(CMClockGetHostTimeClock())
         queue.sync { self.sample();self.stopping=true;self.timer?.cancel();self.timer=nil }
         try await stream?.stopCapture()
+        guard let writer else { throw CaptureError(message:"Recording did not start") }
+        let finishedAt = try queue.sync { try writer.prepareToFinish(at: end) }
+        try await writer.finishWriting()
+        try queue.sync {
+            guard let first=self.firstPTS else { throw CaptureError(message:"No screen frames were captured") }
+            let end = finishedAt.seconds
+            if var last=self.lastPoint {last["t"]=end;self.samples.append(last)}
+            let normalized=self.samples.filter { ($0["t"] as? Double ?? 0) >= first }.map { p -> [String:Any] in
+                var p=p;p["t"]=(p["t"] as! Double)-first;return p
+            }
+            let data=try JSONSerialization.data(withJSONObject:["clean":true,"samples":normalized])
+            try data.write(to:self.cursorOutput,options:.atomic)
+            let interactionData = try JSONSerialization.data(withJSONObject: self.interactions.finish(first: first, end: end))
+            try interactionData.write(to: self.output.deletingLastPathComponent().appendingPathComponent("interactions.json"), options:.atomic)
+            let diagnostics = try JSONSerialization.data(withJSONObject: ["hardwareRequired": true,
+                "codec": writer.codec.rawValue, "width": writer.width, "height": writer.height,
+                "fps": writer.fps, "droppedFrames": writer.droppedFrames])
+            try diagnostics.write(to: self.output.deletingLastPathComponent().appendingPathComponent("capture.json"), options: .atomic)
+            emit(["event":"finished","startedAt":self.startWall,"droppedFrames":writer.droppedFrames])
+        }
+        exit(0)
     }
 }
 
@@ -165,7 +174,7 @@ if args.contains("--interaction-access") || args.contains("--request-interaction
     return
 }
 if args.contains("--diagnostics") {
-    emit(["event":"diagnostics","available":ProcessInfo.processInfo.operatingSystemVersion.majorVersion>=15,"cursorHidden":true,"fps":60])
+    emit(["event":"diagnostics","available":ProcessInfo.processInfo.operatingSystemVersion.majorVersion>=15,"cursorHidden":true,"fps":30,"hardwareRequired":true])
     return
 }
 if #available(macOS 15.0, *) {
@@ -178,7 +187,11 @@ if #available(macOS 15.0, *) {
             let rawPIDs=argument("--exclude-apps")?.split(separator:",") ?? []
             let excluded=rawPIDs.compactMap { pid_t($0) }.filter { $0 > 0 }
             guard excluded.count == rawPIDs.count else { throw CaptureError(message:"Invalid capture exclusion process ID") }
-            try await capture.start(source:source,output:URL(fileURLWithPath:file),audio:args.contains("--audio"),excludeApplicationPIDs:excluded)
+            guard let height = Int(argument("--height") ?? "2160"), let fps = Int(argument("--fps") ?? "30") else {
+                throw CaptureError(message: "Invalid recording resolution or frame rate")
+            }
+            let settings = try CaptureSettings(height: height, fps: fps)
+            try await capture.start(source:source,output:URL(fileURLWithPath:file),audio:args.contains("--audio"),excludeApplicationPIDs:excluded,settings:settings)
             DispatchQueue.global().async {
                 _ = readLine()
                 Task {do {try await capture.stop()} catch {fail(error)}}

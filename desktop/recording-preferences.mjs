@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { autoZoomOptions } from "./recording-options.mjs";
+import { autoZoomOptions, captureOptions } from "./recording-options.mjs";
 const file = (profile) => path.join(profile, "recording-preferences.json");
 const device = (value) =>
   value && typeof value.deviceId === "string"
@@ -17,6 +17,7 @@ const normalize = (value) => ({
   microphone: device(value?.microphone),
   systemAudio: value?.systemAudio === true,
   autoZoom: autoZoomOptions(value?.autoZoom),
+  capture: captureOptions(value?.capture),
 });
 export async function recordingPreferences(profile) {
   try {
@@ -39,6 +40,7 @@ export function updateRecordingPreferences(profile, patch) {
         ...previous,
         ...patch,
         autoZoom: { ...previous.autoZoom, ...patch.autoZoom },
+        capture: { ...previous.capture, ...patch.capture },
       });
       await fs.mkdir(profile, { recursive: true });
       const temp = `${file(profile)}.${randomUUID()}.tmp`;

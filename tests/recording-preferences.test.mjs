@@ -10,6 +10,9 @@ import {
 import {
   preferredDevice,
   defaultAutoZoom,
+  defaultCapture,
+  cameraRecordingType,
+  recordingExtension,
 } from "../desktop/recording-options.mjs";
 import {
   automaticZooms,
@@ -47,6 +50,7 @@ test("camera, mic, system audio and zoom policy survive reload and concurrent wr
       microphone,
       systemAudio: true,
       autoZoom: { ...defaultAutoZoom, click: true, typing: false },
+      capture: defaultCapture,
     });
     await updateRecordingPreferences(root, {
       camera: { deviceId: "", label: "", groupId: "" },
@@ -57,6 +61,57 @@ test("camera, mic, system audio and zoom policy survive reload and concurrent wr
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
+});
+test("old profiles gain balanced capture defaults and saved quality survives reload", async () => {
+  const root = await fs.mkdtemp(
+    path.join(os.tmpdir(), "frame-capture-preferences-"),
+  );
+  try {
+    await fs.writeFile(
+      path.join(root, "recording-preferences.json"),
+      JSON.stringify({ systemAudio: true }),
+    );
+    assert.deepEqual((await recordingPreferences(root)).capture, {
+      height: 2160,
+      fps: 30,
+    });
+    await updateRecordingPreferences(root, { capture: { height: 0, fps: 60 } });
+    assert.deepEqual((await recordingPreferences(root)).capture, {
+      height: 0,
+      fps: 60,
+    });
+    await updateRecordingPreferences(root, { capture: { height: 1080 } });
+    assert.deepEqual((await recordingPreferences(root)).capture, {
+      height: 1080,
+      fps: 60,
+    });
+    await updateRecordingPreferences(root, {
+      capture: { height: 999, fps: 240 },
+    });
+    assert.deepEqual((await recordingPreferences(root)).capture, {
+      height: 2160,
+      fps: 30,
+    });
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+test("camera selects H.264 with the matching audio codec and never silently returns VP9", () => {
+  assert.equal(
+    cameraRecordingType(() => true),
+    "video/mp4;codecs=avc1.640028",
+  );
+  assert.equal(
+    cameraRecordingType((t) => t.includes("42001f"), true),
+    "video/mp4;codecs=avc1.42001f,mp4a.40.2",
+  );
+  assert.throws(
+    () => cameraRecordingType((t) => t.includes("vp9")),
+    /H.264 camera recording is unavailable/,
+  );
+  assert.equal(recordingExtension(cameraRecordingType(() => true)), "mp4");
+  assert.equal(recordingExtension("audio/webm;codecs=opus"), "webm");
+  assert.throws(() => recordingExtension("../../screen.mp4"), /Unsupported/);
 });
 test("device reconnects match remembered identity and missing devices do not select an unrelated device", () => {
   const devices = [

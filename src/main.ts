@@ -7,12 +7,16 @@ import {
 } from "./recording-preferences";
 import {
   defaultAutoZoom,
+  captureOptions,
+  cameraRecordingType,
   type AutoZoomOptions,
 } from "../desktop/recording-options.mjs";
 import { exportProgressText } from "./export-progress";
 import { WebcamTake } from "./webcam-take";
 import { CutMedia } from "./cut-media";
 import { EnhancedAudio } from "./enhanced-audio";
+import { Transcript } from "./transcript";
+import { connectAppUpdates } from "./app-updates";
 import { audioModels, audioModel } from "../desktop/audio-models.mjs";
 import { attachTooltips } from "./tooltips";
 import "./style.css";
@@ -77,6 +81,8 @@ import {
 const icon = (name: string, size = 18) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${({ image: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 16 5-5 5 5 3-3 5 5"/>', volume: '<path d="m11 4-6 5H2v6h3l6 5zM16 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>', redo: '<path d="M21 6H10a7 7 0 0 0 0 14M21 6l-5-5m5 5-5 5"/>', end: '<path d="m6 5 10 7-10 7zM19 5v14"/>', start: '<path d="m18 5-10 7 10 7zM5 5v14"/>', screen: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/>', camera: '<rect x="3" y="5" width="13" height="14" rx="3"/><path d="m16 10 5-3v10l-5-3"/>', mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/>', play: '<path d="m8 5 11 7-11 7z" fill="currentColor"/>', pause: '<path d="M8 5v14M16 5v14" stroke-width="4"/>', folder: '<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>', upload: '<path d="M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5"/>', download: '<path d="M12 3v13m-5-5 5 5 5-5M4 17v4h16v-4"/>', cut: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="m8 8 12 12M8 16 20 4"/>', trash: '<path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/>', undo: '<path d="M3 10h11a7 7 0 0 1 0 14M3 10l5-5m-5 5 5 5" transform="translate(0 -4)"/>', save: '<path d="M5 3h12l4 4v14H3V3h2zM7 3v6h10V3M7 21v-8h10v8"/>', plus: '<path d="M12 5v14M5 12h14"/>', sliders: '<path d="M4 7h5m4 0h7M4 17h10m4 0h2"/><circle cx="11" cy="7" r="2"/><circle cx="16" cy="17" r="2"/>', close: '<path d="m6 6 12 12M18 6 6 18"/>', check: '<path d="m5 12 4 4L19 6"/>', layers: '<path d="m12 3 10 5-10 5L2 8zm-9 10 9 5 9-5m-18 5 9 5 9-5"/>', stop: '<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>', bolt: '<path d="m13 2-9 12h7l-1 8 10-13h-7z"/>' } as Record<string, string>)[name] || ""}</svg>`;
 const api = window.studio;
+let transcriptFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
+const transcript = new Transcript(updateTranscriptStatus);
 const $ = <T extends Element = HTMLElement>(s: string) =>
   document.querySelector<T>(s)!;
 const escape = (s: string) =>
@@ -183,7 +189,7 @@ $("#app").innerHTML = `
 <header class="titlebar">
   <div class="brand"><span class="brand-mark">${icon("layers", 17)}</span><span>Open Record Studio</span></div>
   <div class="project-heading"><span class="title-divider"></span><div id="project-title" role="button" tabindex="-1" title="Double-click to rename">Untitled recording</div><input id="project-name" aria-label="Project name" maxlength="120" autocomplete="off" spellcheck="false" hidden/></div>
-  <div class="header-actions"><button id="new-recording" class="subtle" data-tooltip="Recording options">${icon("plus", 16)}<span>Record</span></button><button id="add-media" class="subtle" data-tooltip="Add images or videos to this project" disabled>＋ Add media</button><button id="import" class="icon-button" data-tooltip="Start a project from a video or image" aria-label="Import media">${icon("download", 17)}</button><button id="open" class="icon-button" data-tooltip="Open a project" aria-label="Open project">${icon("folder", 17)}</button><span class="action-divider"></span><button id="save" class="icon-button" data-tooltip="Save project" data-shortcut="⌘S" aria-keyshortcuts="Meta+S" aria-label="Save project" disabled>${icon("save", 17)}</button><button id="export" class="primary" data-tooltip="Export video or GIF" disabled>${icon("upload", 16)}Export video</button></div>
+  <div class="header-actions"><button id="app-update" class="secondary" hidden>Update available</button><button id="new-recording" class="subtle" data-tooltip="Recording options">${icon("plus", 16)}<span>Record</span></button><button id="add-media" class="subtle" data-tooltip="Add images or videos to this project" disabled>＋ Add media</button><button id="import" class="icon-button" data-tooltip="Start a project from a video or image" aria-label="Import media">${icon("download", 17)}</button><button id="open" class="icon-button" data-tooltip="Open a project" aria-label="Open project">${icon("folder", 17)}</button><span class="action-divider"></span><button id="save" class="icon-button" data-tooltip="Save project" data-shortcut="⌘S" aria-keyshortcuts="Meta+S" aria-label="Save project" disabled>${icon("save", 17)}</button><button id="export" class="primary" data-tooltip="Export video or GIF" disabled>${icon("upload", 16)}Export video</button></div>
 </header>
 <main class="workspace">
 <section class="editor">
@@ -242,7 +248,7 @@ $("#app").innerHTML = `
     <div id="enhance-audio-status" role="status" hidden></div><button id="retry-enhance-audio" class="text-button" hidden>Retry</button></section>
   <section><h3>${icon("screen", 16)}Screen audio</h3><label class="range-label" for="volume">Volume <output id="volume-value">100%</output></label><input id="volume" type="range" min="0" max="1" step="0.05" value="1"/></section>
   <section><h3>${icon("mic", 16)}Microphone</h3><label class="range-label" for="microphoneVolume">Volume <output id="microphoneVolume-value">100%</output></label><input id="microphoneVolume" type="range" min="0" max="1" step="0.05" value="1"/></section>
-
+  <section class="transcript-section"><h3>Transcript</h3><button id="copy-transcript" class="secondary" aria-label="Copy transcript" aria-live="polite" disabled><span class="transcript-copy-label">Copy transcript</span><span class="transcript-copy-success" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4 10-10"/></svg>Copied</span></button><button id="cancel-transcript" class="text-button" hidden>Cancel</button><p id="transcript-status" role="status" hidden></p></section>
 </div>
 <div id="panel-motion" class="settings-panel" role="tabpanel" aria-labelledby="tab-motion" hidden>
 <section class="zoom-editor">
@@ -276,6 +282,11 @@ $("#app").innerHTML = `
     <div class="capture-input">${icon("camera", 17)}<label for="record-camera">Camera</label><select id="record-camera"><option value="">Off</option></select></div>
     <div class="capture-input">${icon("mic", 17)}<label for="record-microphone">Microphone</label><select id="record-microphone"><option value="">Off</option></select></div>
     <div class="capture-input">${icon("volume", 17)}<label for="record-system">System audio</label><label class="switch" title="Include sound from your Mac"><input type="checkbox" id="record-system" aria-label="System audio"/><span></span></label></div>
+  </div>
+  <div class="capture-quality">
+    <label>Screen resolution<select id="record-height"><option value="720">720p</option><option value="1080">1080p</option><option value="2160" selected>4K</option><option value="0">Original resolution</option></select></label>
+    <label>Frame rate<select id="record-fps"><option value="30" selected>30 fps</option><option value="60">60 fps</option></select></label>
+    <p>30 fps uses less power. Higher resolutions preserve more detail when zooming.</p>
   </div>
   <p id="record-camera-error" role="alert" hidden></p>
   <details class="record-advanced"><summary>Advanced ${icon("sliders", 14)}</summary><div class="auto-zoom-heading">Automatic zooms</div><div class="auto-zoom-options">${Object.entries(
@@ -700,6 +711,8 @@ async function load(p: Project | null) {
   syncMedia(true);
 }
 function update() {
+  transcript.configure(project, edits, !!recordId || busy);
+  updateTranscriptStatus();
   redraw = true;
   canvasMedia.update();
   const has = Boolean(project && edits);
@@ -2544,6 +2557,43 @@ function updateEnhanceStatus() {
   $<HTMLButtonElement>("#play").disabled =
     !project || (enabled && (enhancedAudio.pending || !!enhancedAudio.error));
 }
+function updateTranscriptStatus() {
+  const button = document.querySelector<HTMLButtonElement>("#copy-transcript");
+  if (!button) return;
+  const hasAudio =
+    project &&
+    (project.tracks.screen.audio ||
+      project.tracks.microphone?.audio ||
+      Object.values(project.assets || {}).some(
+        (asset) => asset.audio && asset.timeMap,
+      ));
+  button.disabled = !hasAudio || busy || !!recordId || transcript.pending;
+  const copied = transcript.message === "Transcript copied.";
+  if (!copied && transcriptFeedbackTimer) {
+    clearTimeout(transcriptFeedbackTimer);
+    transcriptFeedbackTimer = null;
+  }
+  if (copied && !transcriptFeedbackTimer) {
+    transcriptFeedbackTimer = setTimeout(() => {
+      transcriptFeedbackTimer = null;
+      transcript.message = "";
+      updateTranscriptStatus();
+    }, 1800);
+  }
+  const label = transcript.pending ? "Transcribing…" : "Copy transcript";
+  button.querySelector(".transcript-copy-label")!.textContent = label;
+  button.setAttribute("aria-label", copied ? "Transcript copied" : label);
+  button.classList.toggle("is-copied", copied);
+  $("#cancel-transcript").hidden = !transcript.pending;
+  $("#transcript-status").hidden = copied || !transcript.message;
+  $("#transcript-status").textContent = copied ? "" : transcript.message;
+}
+$("#copy-transcript").onclick = () => {
+  if (!project || !edits || busy || recordId) return;
+  pause();
+  void transcript.copy(project, edits);
+};
+$("#cancel-transcript").onclick = () => transcript.cancel();
 $("#audioEnhancementModel").addEventListener("change", (e) => {
   const model = audioModel(
     (e.target as HTMLSelectElement).value as Style["audioEnhancementModel"],
@@ -2781,6 +2831,7 @@ let refreshingInteractionAccess = false,
   recordingDialogRequest = 0;
 let sourceFilter: "screen" | "window" = "screen";
 function updateRecordingAvailability() {
+  updateTranscriptStatus();
   const start = $<HTMLButtonElement>("#start-record");
   start.disabled =
     !sourceId ||
@@ -2949,6 +3000,21 @@ async function refreshCaptureSources() {
   }
 }
 $("#refresh-sources").onclick = () => void refreshCaptureSources();
+for (const id of ["record-height", "record-fps"]) {
+  $("#" + id).addEventListener(
+    "change",
+    () =>
+      void task(() =>
+        saveRecordingPreferences({
+          capture: captureOptions({
+            height: Number($<HTMLSelectElement>("#record-height").value) as
+              0 | 720 | 1080 | 2160,
+            fps: Number($<HTMLSelectElement>("#record-fps").value) as 30 | 60,
+          }),
+        }),
+      ),
+  );
+}
 async function recordDialog() {
   if (recordId || busy) return;
   pause();
@@ -2985,6 +3051,9 @@ async function recordDialog() {
       "Microphone",
     );
     $<HTMLInputElement>("#record-system").checked = preferences.systemAudio;
+    const capture = captureOptions(preferences.capture);
+    $<HTMLSelectElement>("#record-height").value = String(capture.height);
+    $<HTMLSelectElement>("#record-fps").value = String(capture.fps);
     document
       .querySelectorAll<HTMLInputElement>("[data-auto-zoom]")
       .forEach(
@@ -3032,6 +3101,8 @@ async function startRecording() {
   if (!sourceId || !(await canReplace()) || !(await refreshInteractionAccess()))
     return;
   busy = true;
+  transcript.configure(project, edits, true);
+  updateTranscriptStatus();
   for (const el of document.querySelectorAll<HTMLInputElement>(
     "#record-dialog select, #record-dialog input, #record-dialog .close-dialog, #record-use-media",
   ))
@@ -3099,17 +3170,14 @@ async function startRecording() {
     for (const key of ["screen", "camera", "microphone"]) {
       const stream = captures[key];
       if (!stream) continue;
-      const types =
+      const mimeType =
         key === "microphone"
-          ? ["audio/webm;codecs=opus", "audio/webm"]
-          : [
-              "video/webm;codecs=vp9,opus",
-              "video/webm;codecs=vp8,opus",
-              "video/webm",
-            ];
-      const mimeType = types.find((t) => MediaRecorder.isTypeSupported(t));
+          ? ["audio/webm;codecs=opus", "audio/webm"].find((t) =>
+              MediaRecorder.isTypeSupported(t),
+            )
+          : cameraRecordingType((t) => MediaRecorder.isTypeSupported(t));
       if (!mimeType)
-        throw new Error("This runtime has no supported recording codec");
+        throw new Error("This runtime has no supported audio recording codec");
       const recorder = new MediaRecorder(stream, {
         mimeType,
         ...(key === "microphone"
@@ -3121,7 +3189,12 @@ async function startRecording() {
         const id = recordId;
         writeQueue = writeQueue
           .then(async () => {
-            await api.append(id, key, await e.data.arrayBuffer());
+            await api.append(
+              id,
+              key,
+              await e.data.arrayBuffer(),
+              recorder.mimeType,
+            );
           })
           .catch((e) => {
             recordError = String(e);
@@ -3236,6 +3309,7 @@ async function stopRecording() {
     nativeRecording = false;
     stopping = false;
     $("#recording-banner").hidden = true;
+    update();
   }
 }
 const webcamTake = new WebcamTake({
@@ -3277,6 +3351,20 @@ const webcamTake = new WebcamTake({
     seek(time);
     update();
     toast("Webcam take added at " + clock(time));
+  },
+  error,
+});
+connectAppUpdates($<HTMLButtonElement>("#app-update"), {
+  activity: () => ({
+    recording: !!recordId || webcamTake.active,
+    busy,
+    dirty,
+    saving,
+    renaming: !!renaming || !$<HTMLInputElement>("#project-name").hidden,
+  }),
+  lock: (value) => {
+    busy = value;
+    update();
   },
   error,
 });

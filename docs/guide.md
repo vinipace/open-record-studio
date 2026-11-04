@@ -15,6 +15,10 @@
 
 Choose your **Projects folder** once, either when creating your first project or from the button at the bottom of the inspector. Open Record Studio remembers it across restarts. Recordings are named **Recording 1**, **Recording 2**, and so on; imports use their media filename, adding a number for duplicates. No project name or save-location dialog appears after the folder is set. Change the folder anytime for future projects.
 
+**Screen resolution** and **Frame rate** are saved separately from export settings. New profiles start at **4K / 30 fps**. Choose 720p, 1080p, 4K, or **Original resolution**, and 30 or 60 fps. Resolution limits preserve the source's proportions and never upscale smaller sources. Lower resolutions and 30 fps reduce recording work; Original preserves more detail for zooming. The webcam stays at up to 1080p / 30 fps.
+
+Screen capture requires a hardware encoder: H.264 through 4K, or HEVC for larger original-resolution sources such as 5K displays. If the hardware encoder is unavailable, recording reports an error instead of silently using a CPU encoder. Webcam recordings use H.264 instead of VP9. Existing recordings are unchanged. New screen recordings also save `capture.json` with the actual encoding settings and dropped-frame count for troubleshooting.
+
 Double-click the project title to rename it. Enter or clicking away saves the name; Escape cancels. Keyboard users can focus the title and press Enter. Renaming preserves unsaved timeline edits and keeps the project's directory stable for existing file/MCP references. Existing projects stay in their original folders.
 
 **Use video or image** opens the file picker directly. Choose MP4, MOV, MKV, WEBM or M4V, or a PNG/JPG/WEBP still image. Images start with a 10-second clip; trim it in **Media** or the timeline. Add an optional separate webcam video from **Media → Add webcam video**. Original files are copied into the project. Images also get a timed video track for playback, cuts, zooms and export. The recording picker offers the same **Use a video or image** entry. **Explore a sample project** generates local synthetic media with original artwork to exercise the editor without recording devices. Existing sample projects are preserved; the updated UI example is `examples/design-preview.framestudio`.
@@ -60,6 +64,12 @@ Files are copied into the project's `assets/` folder. Removing a layer preserves
 ## Audio waveforms
 
 The Audio lane shows real decoded waveforms for screen audio and microphone audio. With both sources, screen audio is the upper band and microphone audio the lower band; hover a clip for the labels. Silence stays flat, and volume, source offsets, cuts, trims, playback speed and timeline magnification are reflected in the display. Waveforms load in the background, with cached peak data and persistent canvases so selection and playback do not rebuild them. Existing projects get waveforms when reopened; no migration or re-recording is needed.
+
+## Copy a transcript
+
+In **Audio → Transcript**, click **Copy transcript** to transcribe the edited audio and copy the text. Language is detected automatically. Cuts, removed audio, volume, and webcam-take audio follow the composition; recognition runs at the original speech speed. Empty audio leaves the clipboard unchanged. You can cancel, and changing the project or its edits discards an unfinished result.
+
+Transcription runs locally on Apple silicon. First use downloads the speech tools and an approximately 500 MB Whisper model; later requests reuse them, and unchanged transcripts are cached. Audio is never uploaded. Review the text for recognition errors before sharing it.
 
 ## Canvas ratios and social templates
 

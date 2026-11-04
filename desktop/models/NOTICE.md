@@ -39,3 +39,19 @@ license files remain in the installed environment. Model files and the helper
 live in `~/Library/Application Support/Open Record Studio/audio-models`.
 uv shares its standard package and managed-Python caches to avoid duplicate
 downloads and installations. The processing wrapper is `enhance.py`.
+
+## Local transcription
+
+Copy transcript downloads `mlx-whisper` 0.4.3 and the multilingual
+`mlx-community/whisper-small-mlx` checkpoint at revision
+`45f3915923c7a79a5a5b5a7d909d39aeb0e5630e`. These are fetched on first use,
+not bundled. The upstream sources and terms are available at:
+
+- https://github.com/ml-explore/mlx-examples/tree/main/whisper
+- https://huggingface.co/mlx-community/whisper-small-mlx
+- https://github.com/openai/whisper
+
+The isolated runtime uses the verified uv helper described above, with exact
+Python dependencies in `requirements-transcript.txt`. Models and cached text
+live in `~/Library/Application Support/Open Record Studio/transcription`.
+The wrapper is `transcribe.py`; audio is processed locally and never uploaded.

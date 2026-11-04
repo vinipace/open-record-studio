@@ -46,6 +46,9 @@ with the downloaded uv/Python runtime, are listed in the same model notice.
 These additional weights and runtime packages are fetched from upstream on
 first use, rather than bundled with the app.
 
+Copy transcript also downloads MLX Whisper and a Whisper Small checkpoint on
+first use. Pinned sources and upstream terms are listed in the model notice.
+
 ## FFmpeg
 
 FFmpeg and ffprobe are external executables installed by the user. This repository
