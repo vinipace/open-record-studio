@@ -1,12 +1,14 @@
 import { spawn } from "node:child_process";
+import { captureOptions } from "./recording-options.mjs";
 // Own the helper lifetime and await file finalization, not merely process launch.
 export function startCapture(
   executable,
-  { source, output, audio = false, excludeApplicationPIDs = [] },
+  { source, output, audio = false, excludeApplicationPIDs = [], capture },
   spawnProcess = spawn,
 ) {
   if (!excludeApplicationPIDs.every((pid) => Number.isInteger(pid) && pid > 0))
     throw new Error("Invalid capture exclusion process ID");
+  const { height, fps } = captureOptions(capture);
   const child = spawnProcess(
     executable,
     [
@@ -14,6 +16,10 @@ export function startCapture(
       source,
       "--output",
       output,
+      "--height",
+      String(height),
+      "--fps",
+      String(fps),
       ...(audio ? ["--audio"] : []),
       ...(excludeApplicationPIDs.length
         ? ["--exclude-apps", excludeApplicationPIDs.join(",")]

@@ -1,9 +1,11 @@
+import { recordingExtension } from "./recording-options.mjs";
 import {
   recordingPreferences,
   updateRecordingPreferences,
 } from "./recording-preferences.mjs";
 import {
   app,
+  autoUpdater,
   BrowserWindow,
   desktopCapturer,
   dialog,
@@ -39,6 +41,12 @@ import {
 } from "./media.mjs";
 import { serveMedia } from "./serve-media.mjs";
 import { enhanceProjectAudio } from "./enhance-audio.mjs";
+import { transcribeProject } from "./transcript.mjs";
+import {
+  createAppUpdater,
+  readUpdatePreferences,
+  saveUpdatePreferences,
+} from "./app-updates.mjs";
 import { audioModel } from "./audio-models.mjs";
 import { startCapture } from "./native-capture.mjs";
 import { resizePreviewBounds } from "./preview-window.mjs";
@@ -101,6 +109,99 @@ let win,
   lastExport,
   recordingPreview;
 let previewResize;
+let appUpdater;
+let updateCheckTimer, updateInterval;
+function updateBlocker() {
+  if (recording) return "Stop the recording before updating.";
+  if (exporter) return "Finish or cancel the export before updating.";
+  if (transcriptJob || enhancementJob)
+    return "Wait for audio processing to finish before updating.";
+  return "";
+}
+function publishUpdateState(state) {
+  if (win && !win.isDestroyed())
+    win.webContents.send("frame:update-state", state);
+  const menu = Menu.getApplicationMenu();
+  const item = menu?.getMenuItemById("check-updates");
+  if (item) {
+    item.label =
+      state.status === "checking"
+        ? "Checking for Updates…"
+        : state.status === "downloading"
+          ? "Downloading Update…"
+          : state.status === "ready"
+            ? "Restart to Update…"
+            : "Check for Updates…";
+    item.enabled = ![
+      "checking",
+      "downloading",
+      "installing",
+      "unsupported",
+    ].includes(state.status);
+  }
+  const previews = menu?.getMenuItemById("preview-updates");
+  if (previews) {
+    previews.checked = state.includePreviews;
+    previews.enabled = !["downloading", "ready", "installing"].includes(
+      state.status,
+    );
+  }
+}
+async function showUpdateAction() {
+  if (!appUpdater || !win || win.isDestroyed()) return;
+  try {
+    const reason = updateBlocker();
+    if (reason) throw new Error(reason);
+    let state = appUpdater.getState();
+    if (state.status === "ready") {
+      win.webContents.send("frame:install-update");
+      return;
+    }
+    state = await appUpdater.check();
+    if (["checking", "downloading", "installing"].includes(state.status))
+      return;
+    if (state.status === "available") {
+      const buttons = state.automatic
+        ? ["Download update", "Later", "Release notes"]
+        : ["Open release", "Later"];
+      const result = await dialog.showMessageBox(win, {
+        type: "info",
+        message: `Open Record Studio ${state.version} is available${state.preview ? " (preview)" : ""}.`,
+        detail: state.automatic
+          ? "Download the update now. It will install when you next quit, or you can choose Restart to update once it's ready."
+          : "This release doesn't include an in-app update package. Open its GitHub page to download it.",
+        buttons,
+        defaultId: 0,
+        cancelId: 1,
+      });
+      if (result.response === 0 && state.automatic) await appUpdater.download();
+      else if (
+        (result.response === 0 && !state.automatic) ||
+        result.response === 2
+      )
+        await shell.openExternal(state.releaseURL);
+    } else {
+      await dialog.showMessageBox(win, {
+        type: state.status === "error" ? "warning" : "info",
+        message:
+          state.status === "error"
+            ? "Could not check for updates"
+            : "You're up to date",
+        detail:
+          state.message ||
+          `Open Record Studio ${state.currentVersion} is the newest version available for your update channel.`,
+        buttons: ["OK"],
+      });
+    }
+  } catch (error) {
+    if (win && !win.isDestroyed())
+      await dialog.showMessageBox(win, {
+        type: "info",
+        message: error.message,
+        buttons: ["OK"],
+      });
+  }
+}
 const projects = new Map();
 const sourceTargets = new Map();
 const allowedTracks = new Set(["screen", "camera", "microphone"]);
@@ -115,9 +216,12 @@ const publicAssets = (p) =>
     ]),
   );
 let enhancementJob = null;
+let transcriptJob = null;
 const enhancedFiles = new Map();
 function publicProject(p) {
   current = p;
+  if (transcriptJob && transcriptJob.id !== p.id)
+    transcriptJob.controller.abort();
   if (!p.id) p.id = randomUUID();
   if (waveformJob && waveformJob.id !== p.id) {
     waveformJob.controller.abort();
@@ -149,6 +253,9 @@ function handle(name, fn) {
     return fn(...args);
   });
 }
+handle("appUpdateState", () => appUpdater?.getState());
+handle("checkAppUpdate", showUpdateAction);
+handle("installAppUpdate", () => appUpdater.install());
 handle("waveforms", async (id) => {
   if (!current || id !== current.id)
     throw new Error("Open this project before reading its waveforms");
@@ -239,7 +346,41 @@ handle("cancelEnhanceAudio", (id, requestId) => {
   )
     enhancementJob.controller.abort();
 });
+handle("transcribe", async (id, edits, requestId) => {
+  ensureIdle();
+  if (!current || current.id !== id)
+    throw new Error("Open this project before transcribing");
+  if (typeof requestId !== "string" || requestId.length > 80)
+    throw new Error("Invalid transcription request");
+  transcriptJob?.controller.abort();
+  const job = { id, requestId, controller: new AbortController() };
+  transcriptJob = job;
+  try {
+    return await transcribeProject(current, edits, {
+      signal: job.controller.signal,
+      onStatus: (message) => {
+        if (transcriptJob === job && !win?.isDestroyed())
+          win?.webContents.send("frame:transcript-progress", {
+            requestId,
+            message,
+          });
+      },
+    });
+  } finally {
+    if (transcriptJob === job) transcriptJob = null;
+  }
+});
+handle("cancelTranscription", (id, requestId) => {
+  if (transcriptJob?.id === id && transcriptJob.requestId === requestId)
+    transcriptJob.controller.abort();
+});
+handle("copyTranscript", (text) => {
+  if (typeof text !== "string" || !text.trim() || text.length > 2_000_000)
+    throw new Error("No transcript to copy");
+  clipboard.writeText(text);
+});
 app.on("before-quit", () => {
+  transcriptJob?.controller.abort();
   waveformJob?.controller.abort();
   for (const job of assetWaveformJobs.values()) job.controller.abort();
   enhancementJob?.controller.abort();
@@ -343,6 +484,8 @@ async function newLocation(sourceName) {
   return folder ? allocateProject(folder, sourceName) : null;
 }
 function ensureIdle() {
+  if (appUpdater?.getState().status === "installing")
+    throw new Error("The app is restarting to install an update.");
   if (recording || exporter)
     throw new Error("Finish the current recording or export first");
 }
@@ -432,6 +575,7 @@ handle("updateRecordingPreferences", (patch) =>
 );
 handle("begin", async () => {
   ensureIdle();
+  transcriptJob?.controller.abort();
   requireInteractionAccess(await interactionAccess());
   await binary("ffmpeg");
   const directory = await newLocation();
@@ -443,13 +587,14 @@ handle("begin", async () => {
     queues: {},
     errors: [],
     startedAt: Date.now(),
-    autoZoom: (await recordingPreferences(app.getPath("userData"))).autoZoom,
+    ...(await recordingPreferences(app.getPath("userData"))),
   };
   recordingUI(true);
   return { id };
 });
 handle("beginTake", async (projectId, revision) => {
   ensureIdle();
+  transcriptJob?.controller.abort();
   if (
     !current ||
     current.id !== projectId ||
@@ -507,7 +652,7 @@ handle("finishTake", async (id, samples) => {
       "-nostdin",
       "-n",
       "-i",
-      path.join(rec.directory, "camera.webm"),
+      rawTrackPath(rec, "camera"),
       "-map",
       "0",
       "-c",
@@ -571,7 +716,7 @@ handle("finishTake", async (id, samples) => {
         "The project changed while recording. The take is kept for recovery.",
       );
     await saveProject(p);
-    await fs.unlink(path.join(rec.directory, "camera.webm")).catch(() => {});
+    await fs.unlink(rawTrackPath(rec, "camera")).catch(() => {});
     await fs.unlink(path.join(rec.directory, "recovery.json")).catch(() => {});
     return { project: publicProject(p), layerId };
   } finally {
@@ -587,6 +732,7 @@ handle("startNative", async (id, audio) => {
     source: sourceTargets.get(selectedSource) || selectedSource,
     output: path.join(rec.directory, "screen.mp4"),
     audio: Boolean(audio),
+    capture: rec.capture,
     excludeApplicationPIDs: [process.pid],
   });
   rec.native.done.catch((error) => {
@@ -675,7 +821,9 @@ handle("resizeRecordingPreview", (gesture) => {
     if (gesture.phase !== "move") previewResize = null;
   }
 });
-handle("append", async (id, track, bytes) => {
+const rawTrackPath = (rec, track) =>
+  path.join(rec.directory, `${track}.${rec.extensions?.[track] || "webm"}`);
+handle("append", async (id, track, bytes, mimeType) => {
   const rec = recording;
   if (
     !rec ||
@@ -685,12 +833,14 @@ handle("append", async (id, track, bytes) => {
     bytes.byteLength > 32 * 1024 * 1024
   )
     throw new Error("Invalid recording chunk");
+  const extension = recordingExtension(mimeType);
+  rec.extensions ||= {};
+  if (rec.extensions[track] && rec.extensions[track] !== extension)
+    throw new Error("Recording container changed during capture");
+  rec.extensions[track] = extension;
   const previous = rec.queues[track] || Promise.resolve();
   const job = previous.then(() =>
-    fs.appendFile(
-      path.join(rec.directory, track + ".webm"),
-      Buffer.from(bytes),
-    ),
+    fs.appendFile(rawTrackPath(rec, track), Buffer.from(bytes)),
   );
   rec.queues[track] = job.catch((error) => {
     rec.errors.push(error.message);
@@ -754,9 +904,9 @@ handle("finish", async (id, metadata) => {
       if (rec.queues[key]) {
         const stamp = metadata[key]?.startedAt;
         if (!Number.isFinite(stamp)) throw new Error("Missing track clock");
-        const raw = path.join(rec.directory, key + ".webm"),
+        const raw = rawTrackPath(rec, key),
           final = path.join(rec.directory, key + ".mkv");
-        // Remux finalizes WebM durations and indexes without re-encoding media.
+        // Remux finalizes MP4/WebM durations and indexes without re-encoding media.
         await run(await binary("ffmpeg"), [
           "-v",
           "error",
@@ -788,8 +938,8 @@ handle("finish", async (id, metadata) => {
       interactions,
       rec.autoZoom,
     );
-    for (const key of Object.keys(tracks))
-      await fs.unlink(path.join(rec.directory, key + ".webm")).catch(() => {});
+    for (const key of Object.keys(rec.queues))
+      await fs.unlink(rawTrackPath(rec, key)).catch(() => {});
     return result;
   } finally {
     recording = null;
@@ -1307,6 +1457,33 @@ app
           submenu: [
             { role: "about" },
             {
+              id: "check-updates",
+              label: "Check for Updates…",
+              click: () => void showUpdateAction(),
+            },
+            {
+              id: "preview-updates",
+              label: "Include Preview Releases",
+              type: "checkbox",
+              checked: true,
+              click: async (item) => {
+                try {
+                  appUpdater.setIncludePreviews(item.checked);
+                  await saveUpdatePreferences(
+                    app.getPath("userData"),
+                    item.checked,
+                  );
+                  void appUpdater.check().catch(() => {});
+                } catch (error) {
+                  dialog.showErrorBox(
+                    "Could not change update channel",
+                    error.message,
+                  );
+                }
+              },
+            },
+            { type: "separator" },
+            {
               label: "Copy MCP configuration",
               // The custom macOS bundle retains Electron's executable name;
               // detect our packaged resources the same way as nativeCapturePath.
@@ -1349,7 +1526,29 @@ app
         { role: "windowMenu" },
       ]),
     );
+    const updatePreferences = await readUpdatePreferences(
+      app.getPath("userData"),
+    );
+    appUpdater = createAppUpdater({
+      nativeUpdater: autoUpdater,
+      version: app.getVersion(),
+      supported:
+        import.meta.url.includes("app.asar/") &&
+        process.platform === "darwin" &&
+        process.arch === "arm64",
+      ...updatePreferences,
+      getBlocker: updateBlocker,
+      onChange: publishUpdateState,
+    });
+    publishUpdateState(appUpdater.getState());
     await win.loadFile(path.join(here, "../dist/index.html"));
+    const backgroundUpdateCheck = () => {
+      if (!updateBlocker()) void appUpdater.check().catch(() => {});
+    };
+    updateCheckTimer = setTimeout(backgroundUpdateCheck, 30_000);
+    updateInterval = setInterval(backgroundUpdateCheck, 6 * 60 * 60 * 1000);
+    updateCheckTimer.unref();
+    updateInterval.unref();
     win.on("close", (event) => {
       if (recording || exporter) {
         event.preventDefault();
@@ -1362,7 +1561,12 @@ app
       }
     });
     app.on("window-all-closed", () => app.quit());
-    app.on("will-quit", () => globalShortcut.unregisterAll());
+    app.on("will-quit", () => {
+      globalShortcut.unregisterAll();
+      clearTimeout(updateCheckTimer);
+      clearInterval(updateInterval);
+      appUpdater?.dispose();
+    });
   })
   .catch((error) => {
     console.error(error);
