@@ -442,6 +442,7 @@ test("existing webcam startup gaps hold frame zero in both previews and preserve
   const target = path.resolve(".cache/ui-test/Recording 1.framestudio");
   const file = path.join(target, "project.json");
   const project = JSON.parse(await fs.readFile(file, "utf8"));
+  project.name = "Webcam startup gap";
   project.tracks.camera.offset = 0.28970703125;
   await fs.writeFile(file, JSON.stringify(project));
   await app.evaluate(({ dialog }, directory) => {
@@ -451,6 +452,8 @@ test("existing webcam startup gaps hold frame zero in both previews and preserve
     });
   }, target);
   await page.locator("#open").click();
+  // Opening the same path is asynchronous; do not sample the previous project.
+  await expect(page.locator("#project-title")).toHaveText(project.name);
   const sample = (composition = false) =>
     page.evaluate((composition) => {
       const canvas = document.querySelector("#preview");
