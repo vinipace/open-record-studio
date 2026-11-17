@@ -45,6 +45,10 @@ for first-launch help, updates, and checksum verification.
   ratios and social presets, and export MP4 or GIF without uploading your media.
 - **Edit through MCP.** Query projects and interaction timestamps, get preview
   images, change cuts and zooms, and start or cancel renders from an MCP client.
+- **Hand recording tasks between you and your agent.** Queue webcam + voice
+  todos through MCP or the CLI with the app closed. Review attached reference
+  media, record without a reference-length limit, and mark a take done so a
+  waiting agent can pick up the files. See [recording todos](docs/recording-todos.md).
 
 ## Your webcam, your framing
 
@@ -75,9 +79,10 @@ sends a desktop notification when finished, subject to macOS notification settin
 
 ## MCP automation
 
-The local MCP companion provides 15 tools for reading projects, querying recorded
+The local MCP companion provides 26 tools for recording todos, timestamped video comments, reading projects, querying recorded
 interactions, previewing frames, editing cuts and zooms, changing style, and
-rendering. Batch edits support validation without saving and revision checks to
+rendering. Recording todos include durable completion events and a waiting CLI
+command for agent handoffs. Batch edits support validation without saving and revision checks to
 avoid overwriting newer changes.
 
 **Included in the app—no Node.js or source checkout required.** Choose

@@ -175,6 +175,40 @@ declare global {
       onTranscriptProgress: (
         fn: (data: { requestId: string; message: string }) => void,
       ) => () => void;
+      listTodos: () => Promise<{
+        todos: import("./todos").RecordingTodo[];
+        cursor: number;
+      }>;
+      updateTodo: (
+        id: string,
+        revision: number,
+        changes: { status: "ready" | "cancelled" },
+      ) => Promise<import("./todos").RecordingTodo>;
+      completeTodo: (
+        id: string,
+        revision: number,
+        takeId: string,
+        notes: string,
+      ) => Promise<import("./todos").RecordingTodo>;
+      addTodoComment: (
+        id: string,
+        input: import("./todo-comments").CommentInput,
+      ) => Promise<{
+        comment: import("./todo-comments").TodoComment;
+        cursor: number;
+      }>;
+      updateTodoComment: (
+        id: string,
+        commentId: string,
+        revision: number,
+        status: "open" | "resolved",
+      ) => Promise<{
+        comment: import("./todo-comments").TodoComment;
+        cursor: number;
+      }>;
+      beginTodo: (id: string, revision: number) => Promise<{ id: string }>;
+      finishTodo: (id: string) => Promise<import("./todos").RecordingTodo>;
+      openTodoTake: (id: string, takeId: string) => Promise<Project>;
       enhanceAudio: (
         id: string,
         model: Style["audioEnhancementModel"],

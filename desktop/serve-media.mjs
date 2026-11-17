@@ -44,6 +44,10 @@ export async function serveMedia(file, request) {
         ".mkv": "video/x-matroska",
         ".webm": "video/webm",
         ".flac": "audio/flac",
+        ".mp3": "audio/mpeg",
+        ".wav": "audio/wav",
+        ".m4a": "audio/mp4",
+        ".ogg": "audio/ogg",
       }[path.extname(file).toLowerCase()] || "application/octet-stream",
   });
   if (!range) {

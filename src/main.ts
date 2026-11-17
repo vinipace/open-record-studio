@@ -13,6 +13,7 @@ import {
 } from "../desktop/recording-options.mjs";
 import { exportProgressText } from "./export-progress";
 import { WebcamTake } from "./webcam-take";
+import { RecordingTodos } from "./todos";
 import { CutMedia } from "./cut-media";
 import { EnhancedAudio } from "./enhanced-audio";
 import { Transcript } from "./transcript";
@@ -189,7 +190,7 @@ $("#app").innerHTML = `
 <header class="titlebar">
   <div class="brand"><span class="brand-mark">${icon("layers", 17)}</span><span>Open Record Studio</span></div>
   <div class="project-heading"><span class="title-divider"></span><div id="project-title" role="button" tabindex="-1" title="Double-click to rename">Untitled recording</div><input id="project-name" aria-label="Project name" maxlength="120" autocomplete="off" spellcheck="false" hidden/></div>
-  <div class="header-actions"><button id="app-update" class="secondary" hidden>Update available</button><button id="new-recording" class="subtle" data-tooltip="Recording options">${icon("plus", 16)}<span>Record</span></button><button id="add-media" class="subtle" data-tooltip="Add images or videos to this project" disabled>＋ Add media</button><button id="import" class="icon-button" data-tooltip="Start a project from a video or image" aria-label="Import media">${icon("download", 17)}</button><button id="open" class="icon-button" data-tooltip="Open a project" aria-label="Open project">${icon("folder", 17)}</button><span class="action-divider"></span><button id="save" class="icon-button" data-tooltip="Save project" data-shortcut="⌘S" aria-keyshortcuts="Meta+S" aria-label="Save project" disabled>${icon("save", 17)}</button><button id="export" class="primary" data-tooltip="Export video or GIF" disabled>${icon("upload", 16)}Export video</button></div>
+  <div class="header-actions"><button id="app-update" class="secondary" hidden>Update available</button><button id="recording-todos" class="subtle" aria-label="Recording todos">${icon("check", 16)}<span>Todos</span><b id="todo-badge" hidden></b></button><button id="new-recording" class="subtle" data-tooltip="Recording options">${icon("plus", 16)}<span>Record</span></button><button id="add-media" class="subtle" data-tooltip="Add images or videos to this project" disabled>＋ Add media</button><button id="import" class="icon-button" data-tooltip="Start a project from a video or image" aria-label="Import media">${icon("download", 17)}</button><button id="open" class="icon-button" data-tooltip="Open a project" aria-label="Open project">${icon("folder", 17)}</button><span class="action-divider"></span><button id="save" class="icon-button" data-tooltip="Save project" data-shortcut="⌘S" aria-keyshortcuts="Meta+S" aria-label="Save project" disabled>${icon("save", 17)}</button><button id="export" class="primary" data-tooltip="Export video or GIF" disabled>${icon("upload", 16)}Export video</button></div>
 </header>
 <main class="workspace">
 <section class="editor">
@@ -310,6 +311,19 @@ $("#app").innerHTML = `
 </dialog>
 <dialog id="export-dialog"><div class="dialog-header"><div><span class="eyebrow">EXPORT</span><h2>Your export. Your tracks.</h2></div><button class="close-dialog" aria-label="Close">${icon("close")}</button></div><div class="export-format-row"><label for="export-format">Format</label><select id="export-format"><option value="mp4">MP4 video</option><option value="gif">Animated GIF</option></select><span class="hint" id="export-format-note">Video with optional audio.</span></div><div class="export-modes"><label class="export-card"><input type="radio" name="mode" value="combined" checked/><span class="export-icon">${icon("layers", 24)}</span><strong id="combined-export-label">Combined video</strong><span>Your finished composition, in one file.</span></label><label class="export-card" id="separate-card"><input type="radio" name="mode" value="separate"/><span class="export-icon">${icon("screen", 24)}${icon("camera", 24)}</span><strong>Separate tracks</strong><span id="separate-export-description">Full-frame screen and webcam MP4s.</span><b>IN SYNC</b></label><label class="export-card" id="both-card"><input type="radio" name="mode" value="both"/><span class="export-icon">${icon("plus", 24)}</span><strong>Both</strong><span>The composition plus both tracks.</span></label></div><p class="hint export-note">Separate files share your cuts, playback speed, and timing. Screen zoom is applied; backgrounds and the webcam crop are excluded.</p><p class="hint" id="export-dimensions"></p><div class="export-options"><label>Resolution<select id="export-height"><option value="720">720p</option><option value="1080" selected>1080p</option><option value="2160">4K</option></select></label><label>Frame rate<select id="export-fps"><option value="30">30 fps</option><option value="60" selected>60 fps</option></select></label><label>Quality<select id="export-quality"><option value="high">High</option><option value="standard">Standard</option></select></label></div><label class="check-row" id="export-audio-row"><input type="checkbox" id="export-audio" checked/><span id="export-audio-label">Include audio</span></label><div id="export-progress" hidden><div class="progress-track"><div></div></div><div class="export-progress-details" role="status"><span id="export-progress-label">Preparing export…</span><span id="export-progress-time">Estimating time…</span></div></div><div class="dialog-footer"><span id="export-summary">H.264 · MP4</span><button id="cancel-export" hidden>Cancel export</button><button id="start-export" class="primary">${icon("upload")}Export video</button></div></dialog>
 <div id="recording-banner" hidden><span class="record-dot"></span><strong>Recording</strong><span id="record-clock">00:00.0</span><button id="stop-record">${icon("stop", 16)}Stop & edit</button></div>`;
+
+const recordingTodos = new RecordingTodos({
+  prepare: () => {
+    if (busy || recordId || webcamTake.active)
+      throw new Error("Finish the current recording or export first");
+    pause();
+  },
+  openProject: async (id, takeId) => {
+    if (!(await canReplace())) return false;
+    await load(await api.openTodoTake(id, takeId));
+    return true;
+  },
+});
 
 attachTooltips($(".header-actions"));
 
@@ -3356,7 +3370,7 @@ const webcamTake = new WebcamTake({
 });
 connectAppUpdates($<HTMLButtonElement>("#app-update"), {
   activity: () => ({
-    recording: !!recordId || webcamTake.active,
+    recording: !!recordId || webcamTake.active || recordingTodos.active,
     busy,
     dirty,
     saving,
@@ -3380,7 +3394,11 @@ $("#start-record").onclick = () =>
     }
   });
 const stopAnyRecording = () =>
-  webcamTake.active ? webcamTake.stop() : stopRecording();
+  recordingTodos.active
+    ? recordingTodos.stop()
+    : webcamTake.active
+      ? webcamTake.stop()
+      : stopRecording();
 $("#stop-record").onclick = () => task(stopAnyRecording);
 api?.onStop(() => void stopAnyRecording());
 function refreshExportControls() {
@@ -3626,7 +3644,7 @@ else
     "Launch Open Record Studio as a desktop app to record, import, and export.",
   );
 window.addEventListener("beforeunload", (event) => {
-  if (dirty) {
+  if (dirty || recordingTodos.active) {
     event.preventDefault();
     event.returnValue = "";
   }

@@ -29,6 +29,14 @@ contextBridge.exposeInMainWorld(
       return () =>
         ipcRenderer.removeListener("frame:transcript-progress", listener);
     },
+    listTodos: invoke("listTodos"),
+    updateTodo: invoke("updateTodo"),
+    completeTodo: invoke("completeTodo"),
+    addTodoComment: invoke("addTodoComment"),
+    updateTodoComment: invoke("updateTodoComment"),
+    beginTodo: invoke("beginTodo"),
+    finishTodo: invoke("finishTodo"),
+    openTodoTake: invoke("openTodoTake"),
     waveforms: invoke("waveforms"),
     assetWaveform: invoke("assetWaveform"),
     enhanceAudio: invoke("enhanceAudio"),

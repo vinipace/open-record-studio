@@ -2,6 +2,8 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
+import { TodoStore } from "../desktop/todo-store.mjs";
+import { todoInput, todoPatch, todoCommentInput } from "./todo-schema.mjs";
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { readFileSync } from "node:fs";
@@ -190,6 +192,8 @@ export function createFrameServer() {
     },
   );
   const jobs = new Map();
+  const todos = new TodoStore();
+  const todoWaiters = new Set();
   const activePreviews = new Set();
   let stopping = false;
   const jobView = ({ controller, done, ...job }) => ({ ...job });
@@ -237,6 +241,155 @@ export function createFrameServer() {
     async (args) => json(summary(await snapshot(args))),
   );
 
+  const todoId = { todo_id: z.string().uuid() };
+  const todoRevision = {
+    ...todoId,
+    expected_revision: z.number().int().positive(),
+  };
+  register(
+    "create_todo",
+    "Queue a webcam + voice recording with instructions and copied local reference media. Works with the app closed. After creation, wait_for_todo or the CLI todos wait command returns the user's approved take and file paths. Reference duration never limits recording.",
+    todoInput,
+    false,
+    async (args) => json(await todos.create(args)),
+  );
+  register(
+    "list_todos",
+    "List persistent recording todos, including selected output files for completed handoffs.",
+    {
+      status: z
+        .enum([
+          "ready",
+          "recording",
+          "interrupted",
+          "review",
+          "done",
+          "cancelled",
+        ])
+        .optional(),
+    },
+    true,
+    async ({ status }) => json(await todos.list(status)),
+  );
+  register(
+    "get_todo",
+    "Read a recording brief, attachments, saved takes, timestamped comments, revision and completed output paths.",
+    todoId,
+    true,
+    async ({ todo_id }) => json(await todos.get(todo_id)),
+  );
+  register(
+    "update_todo",
+    "Edit a recording brief, cancel or reopen a todo using its latest revision. Active recordings cannot be changed. Original media and takes are preserved.",
+    { ...todoRevision, changes: z.strictObject(todoPatch) },
+    false,
+    async ({ todo_id, expected_revision, changes }) =>
+      json(await todos.update(todo_id, expected_revision, changes)),
+  );
+  register(
+    "complete_todo",
+    "Mark a reviewed recording done using an existing take ID. Only do this when the user explicitly approves that take. Emits a durable todo.done event and releases waiting clients.",
+    {
+      ...todoRevision,
+      take_id: z.string().uuid(),
+      notes: z.string().max(20000).default(""),
+    },
+    false,
+    async ({ todo_id, expected_revision, take_id, notes }) =>
+      json(await todos.complete(todo_id, expected_revision, take_id, notes)),
+  );
+  register(
+    "todo_events",
+    "Read durable recording events after a cursor, including todo.done and todo.comment_added/resolved/reopened with media paths and timestamps. Persist the returned cursor and paginate while has_more. Events survive app/server restarts.",
+    {
+      after: z.number().int().nonnegative().default(0),
+      limit: z.number().int().min(1).max(500).default(100),
+    },
+    true,
+    async ({ after, limit }) => json(await todos.events(after, limit)),
+  );
+  register(
+    "wait_for_todo",
+    "Wait up to 30 seconds for the user to mark a recording done or cancelled. Returns status waiting on timeout; call again or use CLI todos wait ID as a background Bash task in Claude Code for automatic continuation. MCP alone cannot wake a disconnected or idle client.",
+    { ...todoId, timeout_seconds: z.number().min(0.1).max(30).default(25) },
+    true,
+    async ({ todo_id, timeout_seconds }, ctx) => {
+      const controller = new AbortController();
+      todoWaiters.add(controller);
+      try {
+        return json(
+          await todos.wait(todo_id, {
+            timeout: timeout_seconds * 1000,
+            signal: AbortSignal.any([controller.signal, ctx.mcpReq.signal]),
+          }),
+        );
+      } finally {
+        todoWaiters.delete(controller);
+      }
+    },
+  );
+
+  register(
+    "list_todo_comments",
+    "Read timestamped video feedback, including media file paths, author, status and resolution notes. The returned cursor can be passed to wait_for_todo_comments to wait only for new feedback. Timestamps are seconds in the specific original attachment or take, not an edited timeline.",
+    { ...todoId, status: z.enum(["open", "resolved"]).optional() },
+    true,
+    async ({ todo_id, status }) => json(await todos.comments(todo_id, status)),
+  );
+  register(
+    "add_todo_comment",
+    "Add an agent-authored timestamped comment to an attachment or saved take. Use media IDs from get_todo. Emits a durable comment event; app need not be open.",
+    { ...todoId, ...todoCommentInput },
+    false,
+    async ({ todo_id, ...input }) =>
+      json(await todos.addComment(todo_id, input)),
+  );
+  register(
+    "update_todo_comment",
+    "Resolve feedback after addressing it, with an optional explanation, or reopen it. expected_revision is the comment's revision from list_todo_comments, not the todo's revision. Preserves original comment text and timestamp.",
+    {
+      ...todoId,
+      comment_id: z.string().uuid(),
+      expected_revision: z.number().int().positive(),
+      status: z.enum(["open", "resolved"]),
+      resolution: z.string().max(5000).default(""),
+    },
+    false,
+    async ({ todo_id, comment_id, expected_revision, status, resolution }) =>
+      json(
+        await todos.updateComment(
+          todo_id,
+          comment_id,
+          expected_revision,
+          status,
+          resolution,
+        ),
+      ),
+  );
+  register(
+    "wait_for_todo_comments",
+    "Wait up to 30 seconds for new or reopened comments after a cursor. Returns durable events with text, timestamps and local media paths. On status waiting, call again with the returned cursor. For automatic continuation, run CLI todos wait-comments ID --after CURSOR as a background Bash task in an active Claude Code session; restart the wait after handling each batch. This does not wake a closed/disconnected conversation.",
+    {
+      ...todoId,
+      after: z.number().int().nonnegative().default(0),
+      timeout_seconds: z.number().min(0.1).max(30).default(25),
+    },
+    true,
+    async ({ todo_id, after, timeout_seconds }, ctx) => {
+      const controller = new AbortController();
+      todoWaiters.add(controller);
+      try {
+        return json(
+          await todos.waitComments(todo_id, after, {
+            timeout: timeout_seconds * 1000,
+            signal: AbortSignal.any([controller.signal, ctx.mcpReq.signal]),
+          }),
+        );
+      } finally {
+        todoWaiters.delete(controller);
+      }
+    },
+  );
   register(
     "get_interactions",
     "Query recorded clicks, typing bursts, text selections, scrolls and drags. Event t/end are source seconds; output_times/output_ranges map through current cuts and speed. Includes normalized screen positions, capture capabilities and permission coverage, never typed or selected text. Legacy cursor projects can provide derived click timestamps. Use timebase to filter source or edited-output time; pagination is bounded.",
@@ -508,6 +661,7 @@ export function createFrameServer() {
   );
   const stop = async () => {
     stopping = true;
+    for (const controller of todoWaiters) controller.abort();
     const active = [...jobs.values(), ...activePreviews];
     active.forEach((job) => job.controller.abort());
     await Promise.allSettled(active.map((job) => job.done));

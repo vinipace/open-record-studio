@@ -46,6 +46,10 @@ Uses the [official MCP SDK](https://github.com/modelcontextprotocol/typescript-s
 
 ## Tools
 
+The server also supports a persistent [recording todo inbox](recording-todos.md): `create_todo`, `list_todos`, `get_todo`, `update_todo`, `complete_todo`, `wait_for_todo`, and `todo_events`. Agents can queue webcam/voice briefs and reference media while the app is closed, then wait for the user's approved take. The packaged launcher exposes the same workflow through `todos` CLI commands.
+
+Timestamped video feedback is available through `list_todo_comments`, `add_todo_comment`, `update_todo_comment` and `wait_for_todo_comments`. Comments carry the exact attachment/take path and source timestamp. New or reopened comments release MCP/CLI waiters; resolutions appear in the app. See [comment handoff and background waiting](recording-todos.md#video-comments-and-agent-handoff).
+
 | Tool            | Behavior                                                                                                                        |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `get_project`   | Read tracks, retained clips, source/output timeline positions, zooms, style, capabilities, export settings, and revision.      |
@@ -161,7 +165,7 @@ npm run test:e2e
 node scripts/verify-package.mjs
 ```
 
-`npm run test:mcp` runs eight stdio integration workflows. They discover all 15 tools with legacy and modern clients, exercise cut/zoom CRUD, style changes, dry runs, batch rollback, sequential indices, generated IDs, and cross-process conflicts. Actual cursor pixels verify size and visibility changes; styled previews match rendered output. MP4/GIF rendering, all three outputs, five additional preview/export comparisons, and cancel/retry/disconnect cleanup are covered. The packaged Electron workflow verifies that a batch's cursor/webcam/zoom/cut settings appear after reload, stale saves preserve both editors, and subsequent desktop saves preserve the MCP settings. Fixtures use generated media; no live device recording is performed by these tests. Evidence is written to `evidence/mcp/`, including `styled-preview.png`, `styled-render.mp4`, and `checks.json`.
+`npm run test:mcp` runs nine stdio integration workflows. They discover all 22 tools with legacy and modern clients, exercise cut/zoom CRUD, style changes, dry runs, batch rollback, sequential indices, generated IDs, and cross-process conflicts. Actual cursor pixels verify size and visibility changes; styled previews match rendered output. MP4/GIF rendering, all three outputs, five additional preview/export comparisons, and cancel/retry/disconnect cleanup are covered. The packaged Electron workflow verifies that a batch's cursor/webcam/zoom/cut settings appear after reload, stale saves preserve both editors, and subsequent desktop saves preserve the MCP settings. Fixtures use generated media; no live device recording is performed by these tests. Evidence is written to `evidence/mcp/`, including `styled-preview.png`, `styled-render.mp4`, and `checks.json`.
 
 ## Canvas settings
 

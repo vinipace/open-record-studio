@@ -28,6 +28,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { configureAppIdentity } from "./app-identity.mjs";
 import { mcpClientConfig } from "./mcp-config.mjs";
+import { installTodoRecording } from "./todo-recording.mjs";
 import {
   binary,
   defaults,
@@ -490,6 +491,17 @@ function ensureIdle() {
     throw new Error("Finish the current recording or export first");
 }
 
+const todoRecording = installTodoRecording({
+  handle,
+  ensureIdle,
+  publicProject,
+  recordingUI,
+  getRecording: () => recording,
+  setRecording: (value) => {
+    recording = value;
+  },
+});
+
 handle("status", async () => ({
   ffmpeg: await binary("ffmpeg").then(
     () => true,
@@ -853,6 +865,7 @@ handle("abort", async (id) => {
   rec.native?.abort();
   recording = null;
   await Promise.all(Object.values(rec.queues));
+  if (rec.kind === "todo") await todoRecording.interrupt(rec);
   recordingUI(false);
   // Keep captured files available for manual recovery after errors.
   await fs.writeFile(
@@ -1295,6 +1308,8 @@ app
     const startup = process.argv.find((a) => a.startsWith("--project="));
     if (startup) current = await readProject(startup.slice(10));
     protocol.handle("studio", async (request) => {
+      if (new URL(request.url).hostname === "todos")
+        return todoRecording.serve(request);
       const url = new URL(request.url),
         [id, track, assetId] = url.pathname.slice(1).split("/");
       const p = projects.get(id);
