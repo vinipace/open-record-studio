@@ -4,7 +4,8 @@ export const todoHelp = `Recording todos (works with the app closed):
   todos create --title "Intro" --instructions "Read the attached draft" --attach /absolute/draft.mp4
   todos list [--status ready]
   todos get ID
-  todos update ID --revision N [--title TEXT] [--instructions TEXT] [--status ready|cancelled]
+  todos update ID --revision N [--title TEXT] [--instructions TEXT] [--attach /absolute/video.mp4] [--status ready|cancelled]
+  todos remove-take ID --revision N --take TAKE_ID
   todos done ID --revision N --take TAKE_ID [--notes TEXT]
   todos wait ID [--timeout SECONDS]  (default: wait until done or cancelled)
   todos events [--after CURSOR]
@@ -13,7 +14,9 @@ export const todoHelp = `Recording todos (works with the app closed):
   todos resolve-comment ID --comment COMMENT_ID --revision N [--status resolved|open] [--resolution TEXT]
   todos wait-comments ID [--after CURSOR] [--timeout SECONDS]
 
-Repeat --attach for more reference files. All output is JSON. A timed-out wait exits 2;
+Repeat --attach for more reference files. On update this replaces media on the SAME todo;
+omit --attach to keep existing references. Use update for revisions, not create.
+All output is JSON. A timed-out wait exits 2;
 cancelled exits 3; errors exit 1. Done exits 0 and includes the selected take's paths.
 Run 'todos wait ID' as a background Bash task in Claude Code to resume on completion.
 Run 'todos wait-comments ID --after CURSOR' in the background for new/reopened comments.
@@ -47,7 +50,8 @@ export async function runTodosCli(args) {
     create: ["title", "instructions", "attachments"],
     list: ["status"],
     get: [],
-    update: ["revision", "title", "instructions", "status"],
+    update: ["revision", "title", "instructions", "status", "attachments"],
+    "remove-take": ["revision", "take"],
     done: ["revision", "take", "notes"],
     wait: ["timeout"],
     events: ["after"],
@@ -62,6 +66,7 @@ export async function runTodosCli(args) {
   const needsId = [
     "get",
     "update",
+    "remove-take",
     "done",
     "wait",
     "comments",
@@ -74,7 +79,7 @@ export async function runTodosCli(args) {
       needsId ? "Supply one todo ID" : "Unexpected positional argument",
     );
   if (
-    ["update", "done", "resolve-comment"].includes(command) &&
+    ["update", "done", "resolve-comment", "remove-take"].includes(command) &&
     (!Number.isInteger(Number(flags.revision)) || Number(flags.revision) < 1)
   )
     throw new Error("Supply --revision from todos get");
@@ -82,6 +87,9 @@ export async function runTodosCli(args) {
     id = positional[0];
   let result;
   switch (command) {
+    case "remove-take":
+      result = await store.removeTake(id, Number(flags.revision), flags.take);
+      break;
     case "comments":
       result = await store.comments(id, flags.status);
       break;

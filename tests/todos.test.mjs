@@ -462,3 +462,179 @@ test("real MCP and CLI comment waiters receive feedback with the app absent", as
   });
   assert.equal(bad.isError, true);
 });
+
+test("MCP and CLI replace reference media in place while preserving takes and comment sources", async (t) => {
+  const { store, directory, cli } = await fixture(t);
+  const source = path.join(directory, "draft.png");
+  await fs.copyFile("desktop/assets/demo-screen.png", source);
+  let todo = await store.create({
+    title: "One evolving video",
+    attachments: [source],
+  });
+  const original = todo.attachments[0];
+  const comment = await store.addComment(todo.id, {
+    media_type: "attachment",
+    media_id: original.id,
+    timestamp_seconds: 0,
+    text: "Revise this draft",
+  });
+  const rec = await store.begin(todo.id, (await store.get(todo.id)).revision);
+  todo = await store.finish(todo.id, rec.id, {
+    camera_path: path.join(rec.directory, "camera.mkv"),
+    duration: 5,
+  });
+  // Re-supplying an unchanged reference retains its ID and comments.
+  todo = await cli(
+    "update",
+    todo.id,
+    "--revision",
+    String(todo.revision),
+    "--attach",
+    source,
+  );
+  assert.equal(todo.attachments[0].id, original.id);
+  assert.equal(todo.archived_attachments.length, 0);
+  await fs.copyFile("desktop/assets/demo-camera.png", source);
+  const client = new Client({ name: "replace-reference-test", version: "1" });
+  await client.connect(
+    new StdioClientTransport({
+      command: process.execPath,
+      args: [path.resolve("mcp/server.mjs")],
+      env: { ...process.env, OPEN_RECORD_STUDIO_TODO_DIR: directory },
+      stderr: "pipe",
+    }),
+  );
+  t.after(() => client.close());
+  todo = await call(client, "update_todo", {
+    todo_id: todo.id,
+    expected_revision: todo.revision,
+    changes: {
+      title: "Revised same video",
+      instructions: "Updated brief",
+      attachments: [source],
+    },
+  });
+  assert.equal((await store.list()).todos.length, 1);
+  assert.equal(todo.takes[0].id, rec.id);
+  assert.equal(todo.status, "review");
+  assert.notEqual(todo.attachments[0].id, original.id);
+  assert.equal(todo.comments[0].id, comment.comment.id);
+  assert.equal(todo.comments[0].media.path, original.path);
+  assert.equal(todo.comments[0].media.archived, true);
+  assert.deepEqual(
+    await fs.readFile(original.path),
+    await fs.readFile("desktop/assets/demo-screen.png"),
+  );
+  const snapshot = await store.get(todo.id);
+  await assert.rejects(
+    store.update(todo.id, snapshot.revision - 1, { attachments: [] }),
+    { code: "TODO_CONFLICT" },
+  );
+  await assert.rejects(
+    store.update(todo.id, snapshot.revision, {
+      attachments: [path.join(directory, "missing.mp4")],
+    }),
+  );
+  assert.deepEqual(await store.get(todo.id), snapshot);
+  todo = await call(client, "update_todo", {
+    todo_id: todo.id,
+    expected_revision: todo.revision,
+    changes: { attachments: [] },
+  });
+  assert.equal(todo.attachments.length, 0);
+  assert.equal(todo.archived_attachments.length, 2);
+  assert.equal(
+    (await store.events()).events.filter((e) => e.type === "todo.created")
+      .length,
+    1,
+  );
+  assert.equal(
+    (await new TodoStore(directory).get(todo.id)).comments[0].media.path,
+    original.path,
+  );
+});
+
+test("recording adds clips after done, and removing clips retains feedback and invalidates an approved result", async (t) => {
+  const { store, directory, cli } = await fixture(t);
+  let todo = await store.create({ title: "Multiple clips" });
+  async function record() {
+    const rec = await store.begin(todo.id, todo.revision);
+    await fs.writeFile(
+      path.join(rec.directory, "camera.mkv"),
+      "original camera bytes",
+    );
+    await fs.writeFile(path.join(rec.directory, "project.json"), "{}");
+    todo = await store.finish(todo.id, rec.id, {
+      camera_path: path.join(rec.directory, "camera.mkv"),
+      project_path: rec.directory,
+      duration: 5,
+    });
+    return todo.takes.at(-1);
+  }
+  const first = await record();
+  todo = await store.complete(todo.id, todo.revision, first.id);
+  const second = await record();
+  assert.equal(todo.status, "review");
+  assert.equal(todo.takes.length, 2);
+  assert.equal(todo.result, undefined);
+  await store.addComment(todo.id, {
+    media_type: "take",
+    media_id: first.id,
+    timestamp_seconds: 2,
+    text: "Keep this note for the edit history",
+  });
+  todo = await store.get(todo.id);
+  todo = await store.complete(todo.id, todo.revision, first.id);
+  const revision = todo.revision;
+  const client = new Client({ name: "remove-clip-test", version: "1" });
+  await client.connect(
+    new StdioClientTransport({
+      command: process.execPath,
+      args: [path.resolve("mcp/server.mjs")],
+      env: { ...process.env, OPEN_RECORD_STUDIO_TODO_DIR: directory },
+      stderr: "pipe",
+    }),
+  );
+  t.after(() => client.close());
+  todo = await call(client, "remove_todo_take", {
+    todo_id: todo.id,
+    expected_revision: revision,
+    take_id: first.id,
+  });
+  assert.equal(todo.status, "review");
+  assert.equal(todo.result, undefined);
+  assert.equal(todo.takes[0].name, "Take 2");
+  assert.equal(todo.comments[0].media.removed, true);
+  assert.equal(todo.comments[0].media.name, "Take 1");
+  assert.equal(
+    await fs.readFile(first.camera_path, "utf8"),
+    "original camera bytes",
+  );
+  await assert.rejects(store.removeTake(todo.id, revision, second.id), {
+    code: "TODO_CONFLICT",
+  });
+  const rec = await store.begin(todo.id, todo.revision);
+  todo = await store.get(todo.id);
+  await assert.rejects(store.removeTake(todo.id, todo.revision, second.id), {
+    code: "TODO_BUSY",
+  });
+  todo = await store.interrupt(todo.id, rec.id, "Stopped");
+  todo = await cli(
+    "remove-take",
+    todo.id,
+    "--revision",
+    String(todo.revision),
+    "--take",
+    second.id,
+  );
+  assert.equal(todo.status, "ready");
+  assert.equal(todo.takes.length, 0);
+  assert.equal(todo.removed_takes.length, 2);
+  const third = await record();
+  assert.equal(third.name, "Take 3");
+  assert.equal((await store.list()).todos.length, 1);
+  assert.equal(
+    (await new TodoStore(directory).get(todo.id)).comments[0].media.path,
+    first.camera_path,
+  );
+});

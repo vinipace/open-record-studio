@@ -11,7 +11,13 @@ export type TodoComment = CommentInput & {
   revision: number;
   created_at: string;
   resolution?: string;
-  media: { name: string; path: string; kind: string };
+  media: {
+    name: string;
+    path: string;
+    kind: string;
+    archived?: boolean;
+    removed?: boolean;
+  };
 };
 export const commentTime = (seconds: number) => {
   const value = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
@@ -53,7 +59,7 @@ export class TodoComments {
         <div class="todo-comment-context"><span id="todo-comment-context"></span><button type="button" id="todo-comment-cancel" aria-label="Cancel comment">×</button></div>
         <label class="todo-comment-input-label" for="todo-comment-text">Your comment</label>
         <textarea id="todo-comment-text" rows="3" maxlength="5000" placeholder="What should change at this moment?" required></textarea>
-        <button id="todo-comment-submit" class="primary" type="submit">Post comment</button>
+        <button id="todo-comment-submit" class="primary" type="submit" aria-keyshortcuts="Meta+Enter Control+Enter">Post comment <kbd>⌘↵</kbd></button>
       </form>
       <p id="todo-comment-feedback" role="status"></p>
       <p id="todo-comment-error" role="alert" hidden></p>`;
@@ -65,6 +71,21 @@ export class TodoComments {
     };
     this.$<HTMLTextAreaElement>("#todo-comment-text").oninput = () =>
       this.controls();
+    this.$("#todo-comment-text").onkeydown = (event) => {
+      if (
+        event.key === "Enter" &&
+        (event.metaKey || event.ctrlKey) &&
+        !event.isComposing
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (
+          !event.repeat &&
+          !this.$<HTMLButtonElement>("#todo-comment-submit").disabled
+        )
+          this.$<HTMLFormElement>("#todo-comment-form").requestSubmit();
+      }
+    };
     this.$("#todo-comment-form").onsubmit = (event) => {
       event.preventDefault();
       if (!this.draft || this.busy || this.disabled) return;
@@ -95,7 +116,9 @@ export class TodoComments {
       this.$("#todo-comment-error").hidden = true;
     }
     this.comments = comments;
-    const signature = JSON.stringify(comments.map((c) => [c.id, c.revision]));
+    const signature = JSON.stringify(
+      comments.map((c) => [c.id, c.revision, c.media]),
+    );
     if (signature !== this.signature) {
       this.signature = signature;
       this.render();
@@ -179,7 +202,13 @@ export class TodoComments {
       header.append(timestamp, author);
       const media = document.createElement("div");
       media.className = "todo-comment-media";
-      media.textContent = comment.media.name;
+      media.textContent =
+        comment.media.name +
+        (comment.media.removed
+          ? " · Removed clip"
+          : comment.media.archived
+            ? " · Earlier reference"
+            : "");
       const text = document.createElement("p");
       text.textContent = comment.text;
       card.append(header, media, text);

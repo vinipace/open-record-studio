@@ -179,6 +179,11 @@ declare global {
         todos: import("./todos").RecordingTodo[];
         cursor: number;
       }>;
+      removeTodoTake: (
+        id: string,
+        revision: number,
+        takeId: string,
+      ) => Promise<import("./todos").RecordingTodo>;
       updateTodo: (
         id: string,
         revision: number,

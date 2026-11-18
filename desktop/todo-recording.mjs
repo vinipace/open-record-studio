@@ -25,7 +25,15 @@ export function installTodoRecording({
       ...a,
       url: `studio://todos/${todo.id}/attachments/${a.id}`,
     })),
+    archived_attachments: (todo.archived_attachments || []).map((a) => ({
+      ...a,
+      url: `studio://todos/${todo.id}/attachments/${a.id}`,
+    })),
     takes: todo.takes.map((t) => ({
+      ...t,
+      url: `studio://todos/${todo.id}/takes/${t.id}`,
+    })),
+    removed_takes: (todo.removed_takes || []).map((t) => ({
       ...t,
       url: `studio://todos/${todo.id}/takes/${t.id}`,
     })),
@@ -41,6 +49,10 @@ export function installTodoRecording({
   handle("updateTodo", async (id, revision, changes) => {
     ensureIdle();
     return present(await store.update(id, revision, changes));
+  });
+  handle("removeTodoTake", async (id, revision, takeId) => {
+    ensureIdle();
+    return present(await store.removeTake(id, revision, takeId));
   });
   handle("addTodoComment", (id, input) => store.addComment(id, input, "user"));
   handle("updateTodoComment", (id, commentId, revision, status) =>
@@ -172,9 +184,13 @@ export function installTodoRecording({
         const todo = await store.get(id);
         const file =
           kind === "attachments"
-            ? todo.attachments.find((a) => a.id === mediaId)?.path
+            ? [...todo.attachments, ...(todo.archived_attachments || [])].find(
+                (a) => a.id === mediaId,
+              )?.path
             : kind === "takes"
-              ? todo.takes.find((t) => t.id === mediaId)?.camera_path
+              ? [...todo.takes, ...(todo.removed_takes || [])].find(
+                  (t) => t.id === mediaId,
+                )?.camera_path
               : null;
         return file
           ? serveMedia(file, request)

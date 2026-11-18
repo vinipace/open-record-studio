@@ -248,7 +248,7 @@ export function createFrameServer() {
   };
   register(
     "create_todo",
-    "Queue a webcam + voice recording with instructions and copied local reference media. Works with the app closed. After creation, wait_for_todo or the CLI todos wait command returns the user's approved take and file paths. Reference duration never limits recording.",
+    "Create a NEW webcam + voice recording todo with copied reference media. To revise an existing task or replace its media, use update_todo with its ID; do not cancel and recreate it. Works with the app closed. wait_for_todo returns the approved take. Reference duration never limits recording.",
     todoInput,
     false,
     async (args) => json(await todos.create(args)),
@@ -280,11 +280,19 @@ export function createFrameServer() {
   );
   register(
     "update_todo",
-    "Edit a recording brief, cancel or reopen a todo using its latest revision. Active recordings cannot be changed. Original media and takes are preserved.",
+    "Update an EXISTING todo in place by ID: edit title/brief, replace reference attachments, cancel or reopen it. Keep the same todo ID when revising a video; do not create a replacement todo. Omit attachments to retain them, or pass the full new list (including [] to clear). Takes, comments and earlier media remain available. Requires the latest revision; active recordings cannot be changed.",
     { ...todoRevision, changes: z.strictObject(todoPatch) },
     false,
     async ({ todo_id, expected_revision, changes }) =>
       json(await todos.update(todo_id, expected_revision, changes)),
+  );
+  register(
+    "remove_todo_take",
+    "Remove a recorded clip from a todo when the user asks to discard it. Its files and timestamped comment history are retained. Removing the approved clip reopens the todo. Active recordings cannot be changed.",
+    { ...todoRevision, take_id: z.string().uuid() },
+    false,
+    async ({ todo_id, expected_revision, take_id }) =>
+      json(await todos.removeTake(todo_id, expected_revision, take_id)),
   );
   register(
     "complete_todo",

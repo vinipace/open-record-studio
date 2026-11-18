@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld(
     listTodos: invoke("listTodos"),
     updateTodo: invoke("updateTodo"),
     completeTodo: invoke("completeTodo"),
+    removeTodoTake: invoke("removeTodoTake"),
     addTodoComment: invoke("addTodoComment"),
     updateTodoComment: invoke("updateTodoComment"),
     beginTodo: invoke("beginTodo"),

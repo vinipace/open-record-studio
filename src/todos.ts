@@ -5,11 +5,18 @@ import "./todos.css";
 
 export type TodoTake = {
   id: string;
+  name?: string;
   duration: number;
   url: string;
   camera_path: string;
   microphone_path: string;
   project_path: string;
+};
+type TodoAttachment = {
+  id: string;
+  name: string;
+  kind: "video" | "image" | "audio";
+  url: string;
 };
 export type RecordingTodo = {
   id: string;
@@ -18,13 +25,10 @@ export type RecordingTodo = {
   revision: number;
   status:
     "ready" | "recording" | "interrupted" | "review" | "done" | "cancelled";
-  attachments: {
-    id: string;
-    name: string;
-    kind: "video" | "image" | "audio";
-    url: string;
-  }[];
+  attachments: TodoAttachment[];
+  archived_attachments?: TodoAttachment[];
   takes: TodoTake[];
+  removed_takes?: TodoTake[];
   comments: TodoComment[];
   result?: TodoTake & { notes: string };
   recovery?: { message: string; directory: string };
@@ -85,15 +89,15 @@ export class RecordingTodos {
           <section class="todo-workspace">
             <div id="todo-empty"><h3>No recordings yet</h3><p>Ask your agent to add a recording brief and reference media.</p><details><summary>Connect your agent</summary><p>Use <strong>Open Record Studio → Copy MCP configuration</strong> in the app menu, or the <code>todos create</code> CLI command.</p></details></div>
             <div id="todo-detail" hidden>
-              <div class="todo-heading-row"><h3 id="todo-title"></h3><span id="todo-status" class="todo-status"></span><button id="todo-done" class="primary">✓ <span>Mark as Done</span></button></div>
+              <div class="todo-heading-row"><h3 id="todo-title"></h3><span id="todo-status" class="todo-status"></span><div class="todo-heading-actions"><button id="todo-done" class="primary">✓ <span>Mark as Done</span></button><button id="todo-record" class="primary"><span class="todo-record-dot"></span>Record</button><button id="todo-stop" hidden>■ Stop recording</button></div></div>
               <div class="todo-stage">
                 <section class="todo-reference">
                   <div class="todo-section-label"><span id="todo-reference-label">Reference</span><span id="todo-reference-count"></span></div>
                   <div id="todo-media"></div>
                   <div class="todo-media-actions"><button id="todo-comment-reference">＋ Comment <span id="todo-comment-playhead">00:00.0</span></button><button id="todo-back-reference" class="text-button" hidden>Back to reference</button></div>
                   <div id="todo-attachments" aria-label="Attached media"></div>
-                  <div class="todo-brief"><h4>Recording brief</h4><p id="todo-instructions"></p></div>
                 </section>
+                <section class="todo-brief"><h4>Recording brief</h4><p id="todo-instructions"></p></section>
                 <aside class="todo-capture-column">
                   <div class="todo-capture-tabs"><button id="todo-recording-tab" aria-pressed="true">Recording</button><button id="todo-comments-tab" aria-pressed="false">Comments <span id="todo-comments-count">0</span></button></div>
                   <div id="todo-capture-content">
@@ -101,18 +105,19 @@ export class RecordingTodos {
                     <div class="todo-section-label"><span>Your camera</span><span id="todo-live-label">Preview off</span></div>
                     <div class="todo-camera-view"><video id="todo-camera" muted autoplay playsinline aria-label="Live webcam preview"></video><div id="todo-camera-placeholder"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><rect x="3" y="5" width="13" height="14" rx="3"/><path d="m16 9 5-3v12l-5-3"/></svg><button id="todo-enable">Enable camera & mic</button></div><span id="todo-clock" hidden>00:00</span></div>
                     <details class="todo-device-settings"><summary>Camera & microphone</summary><div class="todo-devices"><label>Camera<select id="todo-camera-device"><option value="default">Default camera</option></select></label><label>Microphone<select id="todo-mic-device"><option value="default">Default microphone</option></select></label></div></details>
-                    <div class="todo-record-actions"><button id="todo-record" class="primary"><span class="todo-record-dot"></span>Start recording</button><button id="todo-stop" hidden>■ Stop recording</button><p class="todo-record-hint">Webcam + voice. No time limit from the reference.</p><button id="todo-review-saved" class="text-button" hidden>Back to saved take</button></div>
+                    <p class="todo-record-hint">Webcam + voice. Each recording adds a new clip.</p>
                   </section>
                   <section id="todo-review" hidden>
                     <div class="todo-review-title"><h4 id="todo-review-heading">Review your take</h4><select id="todo-take-select" aria-label="Take to review"></select></div>
                     <video id="todo-playback" controls playsinline aria-label="Review recorded take"></video>
                     <button id="todo-comment-take" class="text-button">Comment on this take</button>
-                    <div class="todo-review-form"><label for="todo-notes">Notes for your agent <span>Optional</span></label><textarea id="todo-notes" rows="3" maxlength="20000" placeholder="Anything to keep in mind for the edit?"></textarea><div class="todo-review-secondary"><button id="todo-retake">Record again</button><button id="todo-open-take">Open in editor ↗</button></div><p id="todo-handoff-hint">When you're happy, mark this take done above.</p></div>
+                    <div class="todo-review-form"><label for="todo-notes">Notes for your agent <span>Optional</span></label><textarea id="todo-notes" rows="3" maxlength="20000" placeholder="Anything to keep in mind for the edit?"></textarea><div class="todo-review-secondary"><button id="todo-open-take">Open in editor ↗</button></div><p id="todo-handoff-hint">When you're happy, mark this take done above.</p></div>
                   </section>
                   <section id="todo-completed" hidden aria-live="polite">
                     <div class="todo-completion-art"><div class="todo-completion-ring"></div><svg class="todo-completion-check" width="56" height="56" viewBox="0 0 56 56" fill="none" aria-hidden="true"><circle cx="28" cy="28" r="26"/><path d="m17 28 8 8 15-17"/></svg><span class="todo-spark s1"></span><span class="todo-spark s2"></span><span class="todo-spark s3"></span><span class="todo-spark s4"></span><span class="todo-spark s5"></span><span class="todo-spark s6"></span></div>
-                    <h4 id="todo-completion-title">Take complete</h4><p>Saved and ready for editing.</p><div id="todo-completion-progress"></div><button id="todo-next" class="primary">Next recording →</button><div class="todo-completed-secondary"><button id="todo-reopen" class="text-button">Record another take</button><button id="todo-open-completed" class="text-button">Open in editor ↗</button></div>
+                    <h4 id="todo-completion-title">Take complete</h4><p>Saved and ready for editing.</p><div id="todo-completion-progress"></div><button id="todo-next" class="primary">Next recording →</button><div class="todo-completed-secondary"><button id="todo-open-completed" class="text-button">Open in editor ↗</button></div>
                   </section>
+                  <section id="todo-saved-clips" hidden><div class="todo-section-label"><span>Recorded clips</span><span id="todo-take-count"></span></div><div id="todo-takes"></div></section>
                   <div id="todo-recovery" hidden></div></div><section id="todo-comments-panel" hidden></section><p id="todo-error" role="alert" hidden></p>
                 </aside>
               </div>
@@ -148,6 +153,8 @@ export class RecordingTodos {
     };
     $("#todo-back-reference").onclick = () => {
       this.viewingTake = "";
+      if (!this.current?.attachments.some((a) => a.id === this.attachment))
+        this.attachment = this.current?.attachments[0]?.id || "";
       this.renderReference();
     };
     $("#todo-comment-reference").onclick = () => this.startComment();
@@ -191,17 +198,6 @@ export class RecordingTodos {
           $("#todo-next").focus({ preventScroll: true }),
         );
       });
-    $("#todo-retake").onclick = () => {
-      this.retaking = true;
-      this.pauseMedia();
-      this.renderDetail(false);
-      $("#todo-enable").focus();
-    };
-    $("#todo-review-saved").onclick = () => {
-      this.retaking = false;
-      this.release();
-      this.renderDetail(false);
-    };
     $("#todo-next").onclick = () => {
       const next = this.todos.find(
         (t) =>
@@ -212,16 +208,6 @@ export class RecordingTodos {
       else this.dialog.close();
     };
     $("#todo-open-completed").onclick = () => $("#todo-open-take").click();
-    $("#todo-reopen").onclick = () =>
-      void this.run(async () => {
-        const todo = this.current!;
-        await window.studio.updateTodo(todo.id, todo.revision, {
-          status: "ready",
-        });
-        this.retaking = false;
-        this.dialog.classList.remove("todo-celebrate");
-        await this.refresh();
-      });
     $("#todo-open-take").onclick = () =>
       void this.run(async () => {
         if (await this.hooks.openProject(this.selected, this.selectedTake))
@@ -230,6 +216,7 @@ export class RecordingTodos {
     $<HTMLSelectElement>("#todo-take-select").onchange = (e) => {
       this.selectedTake = (e.target as HTMLSelectElement).value;
       this.renderTake();
+      this.renderClips();
     };
     for (const id of ["#todo-camera-device", "#todo-mic-device"])
       $(id).onchange = () =>
@@ -277,7 +264,8 @@ export class RecordingTodos {
     this.refreshing = true;
     try {
       const previous = this.current;
-      const { todos } = await window.studio.listTodos();
+      const result = await window.studio.listTodos();
+      const todos = result.todos.filter((todo) => todo.status !== "cancelled");
       const changed =
         force ||
         todos.length !== this.todos.length ||
@@ -314,9 +302,24 @@ export class RecordingTodos {
           todos.find((t) => !["done", "cancelled"].includes(t.status))?.id ||
           todos[0]?.id ||
           "";
+      if (previous?.id !== this.current?.id) {
+        this.release();
+        this.pauseMedia();
+        this.retaking = false;
+      }
       this.renderList();
       // Completion progress and the next action also depend on other todos.
       this.renderDetail(previous?.id !== this.current?.id);
+      // An agent may replace references on the selected todo in place.
+      if (
+        previous?.id === this.current?.id &&
+        JSON.stringify(previous?.attachments) !==
+          JSON.stringify(this.current?.attachments)
+      ) {
+        if (!this.current!.attachments.some((a) => a.id === this.attachment))
+          this.attachment = this.current!.attachments[0]?.id || "";
+        if (!this.viewingTake) this.renderReference();
+      }
     } finally {
       this.refreshing = false;
     }
@@ -332,6 +335,9 @@ export class RecordingTodos {
     $("#todo-error").hidden = true;
     this.renderList();
     this.renderDetail(true);
+    this.dialog
+      .querySelector('.todo-item[aria-pressed="true"]')
+      ?.scrollIntoView({ block: "nearest" });
   }
   private thumbnail(media?: { kind: string; url: string; name?: string }) {
     const frame = document.createElement("span");
@@ -369,11 +375,9 @@ export class RecordingTodos {
       (t) => t.status !== "done" && t.status !== "cancelled",
     );
     const completed = this.todos.filter((t) => t.status === "done");
-    const cancelled = this.todos.filter((t) => t.status === "cancelled");
     for (const [label, group] of [
       ["To record", pending],
       ["Completed", completed],
-      ["Cancelled", cancelled],
     ] as const) {
       if (!group.length) continue;
       const heading = document.createElement("h3");
@@ -392,6 +396,20 @@ export class RecordingTodos {
           : todo.attachments.find((a) => a.kind !== "audio") ||
             todo.attachments[0];
         const thumbnail = this.thumbnail(preview);
+        const commentCount = todo.comments?.length || 0;
+        if (commentCount) {
+          const bubble = document.createElement("span");
+          bubble.className = "todo-item-comments";
+          bubble.setAttribute("aria-hidden", "true");
+          bubble.innerHTML =
+            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-2 2V11.5a9.5 9.5 0 1 1 19 0Z"/></svg>';
+          bubble.append(document.createTextNode(String(commentCount)));
+          button.append(bubble);
+          button.setAttribute(
+            "aria-label",
+            `${todo.title}, ${commentCount} ${commentCount === 1 ? "comment" : "comments"}`,
+          );
+        }
         const mark = document.createElement("span");
         mark.className = "todo-item-mark";
         mark.textContent = todo.status === "done" ? "✓" : "";
@@ -447,7 +465,6 @@ export class RecordingTodos {
       todo.status === "done" ? "done" : reviewing ? "review" : "record";
     $(".todo-camera-panel").hidden = reviewing;
     $("#todo-review").hidden = !reviewing;
-    $("#todo-review-saved").hidden = !this.retaking || todo.status !== "review";
     $("#todo-review-heading").textContent =
       todo.status === "done" ? "Approved take" : "Review your take";
     $("#todo-completed").hidden = todo.status !== "done";
@@ -471,9 +488,15 @@ export class RecordingTodos {
     const select = $<HTMLSelectElement>("#todo-take-select");
     select.replaceChildren();
     todo.takes.forEach((take, i) =>
-      select.add(new Option(`Take ${i + 1} · ${time(take.duration)}`, take.id)),
+      select.add(
+        new Option(
+          `${take.name || `Take ${i + 1}`} · ${time(take.duration)}`,
+          take.id,
+        ),
+      ),
     );
     this.renderTake();
+    this.renderClips();
     this.comments.setTodo(todo.id, todo.comments || []);
     $("#todo-comments-count").textContent = String(
       (todo.comments || []).length,
@@ -489,23 +512,35 @@ export class RecordingTodos {
       .forEach((v) => (v as HTMLMediaElement).pause());
     media.replaceChildren();
     attachments.replaceChildren();
-    const take = todo.takes.find((t) => t.id === this.viewingTake);
+    const take = [...todo.takes, ...(todo.removed_takes || [])].find(
+      (t) => t.id === this.viewingTake,
+    );
     const selected = take
       ? {
           id: take.id,
-          name: `Take ${todo.takes.indexOf(take) + 1}`,
+          name: take.name || `Take ${todo.takes.indexOf(take) + 1}`,
           kind: "video",
           url: take.url,
         }
-      : todo.attachments.find((a) => a.id === this.attachment);
+      : [...todo.attachments, ...(todo.archived_attachments || [])].find(
+          (a) => a.id === this.attachment,
+        );
+    this.dialog.dataset.orientation = "landscape";
+    const archived =
+      !!selected &&
+      !take &&
+      !todo.attachments.some((a) => a.id === selected.id);
+    const removed = !!take && !todo.takes.some((t) => t.id === take.id);
     $("#todo-reference-label").textContent = take
       ? `${selected!.name} · Recorded video`
-      : "Reference";
+      : archived
+        ? "Earlier reference"
+        : "Reference";
     $("#todo-reference-count").hidden =
       Boolean(take) || todo.attachments.length <= 1;
-    $("#todo-back-reference").hidden = !take;
+    $("#todo-back-reference").hidden = !take && !archived;
     attachments.hidden = Boolean(take) || todo.attachments.length <= 1;
-    $("#todo-comment-reference").hidden = !selected;
+    $("#todo-comment-reference").hidden = !selected || archived || removed;
     $(".todo-media-actions").hidden = !selected;
     $("#todo-comment-playhead").textContent = commentTime(0);
     if (!selected) {
@@ -526,6 +561,14 @@ export class RecordingTodos {
         element.preload = "metadata";
         element.muted = true;
         if (element instanceof HTMLVideoElement) element.playsInline = true;
+        element.onloadedmetadata = () => {
+          if (element.isConnected && element instanceof HTMLVideoElement) {
+            this.dialog.dataset.orientation =
+              element.videoHeight > element.videoWidth
+                ? "portrait"
+                : "landscape";
+          }
+        };
         element.onended = () => {
           if (this.active)
             $("#todo-live-label").textContent = "Still recording";
@@ -567,6 +610,56 @@ export class RecordingTodos {
     if (take && playback.src !== take.url) playback.src = take.url;
     if (!take) playback.removeAttribute("src");
   }
+  private renderClips() {
+    const todo = this.current!,
+      list = $("#todo-takes");
+    $("#todo-saved-clips").hidden = !todo.takes.length;
+    $("#todo-take-count").textContent = String(todo.takes.length);
+    list.replaceChildren();
+    todo.takes.forEach((take, index) => {
+      const name = take.name || `Take ${index + 1}`;
+      const row = document.createElement("div");
+      row.className = "todo-saved-clip";
+      row.dataset.takeId = take.id;
+      const select = document.createElement("button");
+      select.className = "todo-select-clip";
+      select.setAttribute(
+        "aria-pressed",
+        String(this.selectedTake === take.id),
+      );
+      select.append(
+        this.thumbnail({ kind: "video", url: take.url }),
+        document.createTextNode(`${name} · ${time(take.duration)}`),
+      );
+      select.onclick = () => {
+        this.selectedTake = take.id;
+        this.retaking = false;
+        this.pauseMedia();
+        this.renderDetail(false);
+      };
+      const remove = document.createElement("button");
+      remove.className = "todo-remove-clip";
+      remove.textContent = "×";
+      remove.title = `Remove ${name}`;
+      remove.setAttribute("aria-label", `Remove ${name}`);
+      remove.onclick = () =>
+        void this.run(async () => {
+          this.pauseMedia();
+          await window.studio.removeTodoTake(
+            todo.id,
+            this.current!.revision,
+            take.id,
+          );
+          if (this.viewingTake === take.id) {
+            this.viewingTake = "";
+            this.renderReference();
+          }
+          await this.refresh();
+        });
+      row.append(select, remove);
+      list.append(row);
+    });
+  }
   private showComments(show: boolean) {
     $("#todo-comments-panel").hidden = !show;
     $("#todo-capture-content").hidden = show;
@@ -591,7 +684,9 @@ export class RecordingTodos {
         media_id: take?.id || attachment!.id,
         timestamp_seconds: Math.max(0, timestamp ?? media?.currentTime ?? 0),
       },
-      take ? `Take ${this.current.takes.indexOf(take) + 1}` : attachment!.name,
+      take
+        ? take.name || `Take ${this.current.takes.indexOf(take) + 1}`
+        : attachment!.name,
     );
   }
   private seekReference(timestamp: number) {
@@ -613,7 +708,10 @@ export class RecordingTodos {
     if (this.active || this.working) return;
     this.pauseMedia();
     this.viewingTake = comment.media_type === "take" ? comment.media_id : "";
-    if (this.viewingTake && this.current?.status === "review") {
+    if (
+      this.viewingTake &&
+      this.current?.takes.some((t) => t.id === this.viewingTake)
+    ) {
       this.selectedTake = this.viewingTake;
       this.renderTake();
     }
@@ -625,16 +723,13 @@ export class RecordingTodos {
     const blocked = this.active || this.working;
     const ready =
       this.current &&
-      ["ready", "review", "interrupted"].includes(this.current.status);
+      ["ready", "review", "interrupted", "done"].includes(this.current.status);
     for (const id of [
       "#todos-close",
       "#todo-camera-device",
       "#todo-mic-device",
       "#todo-open-take",
       "#todo-take-select",
-      "#todo-reopen",
-      "#todo-retake",
-      "#todo-review-saved",
       "#todo-next",
       "#todo-open-completed",
       "#todo-comment-reference",
@@ -645,11 +740,12 @@ export class RecordingTodos {
     ])
       $<HTMLButtonElement>(id).disabled = blocked;
     document
-      .querySelectorAll<HTMLButtonElement>(".todo-item")
+      .querySelectorAll<HTMLButtonElement>(
+        ".todo-item, .todo-saved-clip button",
+      )
       .forEach((b) => (b.disabled = blocked));
     $<HTMLButtonElement>("#todo-enable").disabled = blocked || !ready;
-    $<HTMLButtonElement>("#todo-record").disabled =
-      blocked || !ready || !this.stream;
+    $<HTMLButtonElement>("#todo-record").disabled = blocked || !ready;
     $("#todo-record").hidden = this.active;
     $("#todo-stop").hidden = !this.active;
     $<HTMLButtonElement>("#todo-stop").disabled = this.working;
@@ -666,8 +762,7 @@ export class RecordingTodos {
     this.comments?.setDisabled(blocked);
     $<HTMLTextAreaElement>("#todo-notes").disabled =
       blocked || this.current?.status === "done";
-    $<HTMLSelectElement>("#todo-take-select").disabled =
-      blocked || this.current?.status === "done";
+    $<HTMLSelectElement>("#todo-take-select").disabled = blocked;
   }
   private async devices() {
     const devices = await navigator.mediaDevices.enumerateDevices();
@@ -732,7 +827,9 @@ export class RecordingTodos {
     await this.devices();
   }
   private async start() {
-    if (!this.stream || !this.current) return;
+    if (!this.current) return;
+    if (!this.stream) await this.enable();
+    if (!this.stream) return;
     this.showComments(false);
     if (this.viewingTake) {
       this.viewingTake = "";
@@ -778,6 +875,10 @@ export class RecordingTodos {
       };
       const { startedAt } = await startRecorder(recorder);
       this.active = true;
+      this.current!.status = "recording";
+      this.retaking = true;
+      this.dialog.classList.remove("todo-celebrate");
+      this.renderDetail(false);
       for (const track of this.stream.getTracks())
         track.onended = () => void this.stop();
       recorder.onstop = () => {

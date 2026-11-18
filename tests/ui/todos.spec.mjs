@@ -246,9 +246,8 @@ test("CLI → inbox → real webcam recorder → approved take → MCP and CLI c
   });
   await expect(page.locator("#todo-done")).toBeEnabled();
   await expect(page.locator("#todo-done")).toBeInViewport();
-  await page.locator("#todo-retake").click();
-  await expect(page.locator(".todo-camera-panel")).toBeVisible();
-  await page.locator("#todo-review-saved").click();
+  await expect(page.locator("#todo-record")).toBeEnabled();
+  await expect(page.locator("#todo-record")).toBeInViewport();
   await expect(page.locator("#todo-review")).toBeVisible();
   const review = await call(client, "get_todo", { todo_id: todo.id });
   expect(review.status).toBe("review");
@@ -378,9 +377,8 @@ test("CLI → inbox → real webcam recorder → approved take → MCP and CLI c
 });
 
 test("retakes preserve originals, inbox survives restart, and compact layout stays usable", async () => {
-  await page.locator("#todo-reopen").click();
-  await expect(page.locator("#todo-status")).toHaveText("Ready to record");
-  await page.locator("#todo-enable").click();
+  await expect(page.locator("#todo-record")).toBeInViewport();
+  await expect(page.locator("#todo-record")).toBeEnabled();
   await page.locator("#todo-record").click();
   await expect(page.locator("#todo-clock")).toHaveText("00:02", {
     timeout: 10000,
@@ -472,7 +470,7 @@ test("permission failure leaves the todo ready and explicit errors are recoverab
   await expect(page.locator("#todo-error")).toContainText(
     "Camera permission denied",
   );
-  await expect(page.locator("#todo-record")).toBeDisabled();
+  await expect(page.locator("#todo-record")).toBeEnabled();
   await expect(page.locator("#todos-close")).toBeEnabled();
   expect((await call(client, "get_todo", { todo_id: pending.id })).status).toBe(
     "ready",
@@ -512,7 +510,10 @@ test("single media stays uncluttered and timestamped comments reach MCP and CLI 
   await expect(page.locator("#todo-done")).toBeDisabled();
   const doneBox = await page.locator("#todo-done").boundingBox();
   expect(doneBox.y).toBeLessThan(90);
-  expect(doneBox.x).toBeGreaterThan(1100);
+  expect(doneBox.x).toBeGreaterThan(1000);
+  const recordBox = await page.locator("#todo-record").boundingBox();
+  expect(recordBox.x).toBeGreaterThan(doneBox.x + doneBox.width);
+  expect(recordBox.y).toBe(doneBox.y);
   await expect
     .poll(() => page.locator("#todo-media video").evaluate((v) => v.readyState))
     .toBeGreaterThanOrEqual(2);
@@ -543,8 +544,11 @@ test("single media stays uncluttered and timestamped comments reach MCP and CLI 
   await page
     .locator("#todo-comment-text")
     .fill("Make this headline easier to read. Hold it for another second.");
-  await page.locator("#todo-comment-submit").click();
+  await page.locator("#todo-comment-text").press("Meta+Enter");
   await expect(page.locator(".todo-comment")).toHaveCount(1);
+  await expect(
+    page.locator(`[data-todo-id="${feedbackTodo.id}"] .todo-item-comments`),
+  ).toHaveText("1");
   const [mcpResult, cliResult] = await Promise.all([mcpWait, cliWait]);
   const comment = mcpResult.events[0].comment;
   expect(comment.author).toBe("user");
@@ -703,6 +707,209 @@ test("single media stays uncluttered and timestamped comments reach MCP and CLI 
       null,
       2,
     ),
+  );
+  expect(errors).toEqual([]);
+});
+
+test("portrait references update the same todo, cancelled items stay hidden, and clips can be removed", async () => {
+  test.setTimeout(90000);
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].setSize(1440, 930),
+  );
+  const cancelled = await cli("create", "--title", "Cancelled recording");
+  await cli(
+    "update",
+    cancelled.id,
+    "--revision",
+    String(cancelled.revision),
+    "--status",
+    "cancelled",
+  );
+  const beforeCount = (await call(client, "list_todos", {})).todos.length;
+  let portraitTodo = await cli(
+    "create",
+    "--title",
+    "Your voice, your story",
+    "--instructions",
+    "Introduce the new workflow in your own words.\n\nExplain what changed and why it matters. Keep the delivery relaxed and leave a short pause before the final line.\n\nThe video is only a reference. Record for as long as you need.",
+    "--attach",
+    source,
+  );
+  await page.locator(`[data-todo-id="${portraitTodo.id}"]`).click();
+  await expect(page.locator(`[data-todo-id="${cancelled.id}"]`)).toHaveCount(0);
+  await expect(
+    page.locator(".todo-group-title").filter({ hasText: "Cancelled" }),
+  ).toHaveCount(0);
+  const portrait = path.join(directory, "portrait-draft.mp4");
+  const poster = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 360;
+    canvas.height = 640;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#152b21";
+    ctx.fillRect(0, 0, 360, 640);
+    ctx.fillStyle = "#f5f5eb";
+    ctx.font = "36px system-ui";
+    ctx.fillText("YOUR VOICE", 26, 120);
+    ctx.fillStyle = "#b5cf83";
+    ctx.font = "42px system-ui";
+    ctx.fillText("Your story.", 26, 174);
+    ctx.fillStyle = "#f5f5eb";
+    ctx.font = "23px system-ui";
+    ctx.fillText("Make it personal.", 26, 290);
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+  const posterPath = path.join(directory, "portrait-poster.png");
+  await fs.writeFile(posterPath, Buffer.from(poster, "base64"));
+  await run(await binary("ffmpeg"), [
+    "-v",
+    "error",
+    "-y",
+    "-loop",
+    "1",
+    "-i",
+    posterPath,
+    "-t",
+    "2",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    portrait,
+  ]);
+  const firstComment = await call(client, "add_todo_comment", {
+    todo_id: portraitTodo.id,
+    media_type: "attachment",
+    media_id: portraitTodo.attachments[0].id,
+    timestamp_seconds: 0.5,
+    text: "Reframe this version vertically.",
+  });
+  portraitTodo = await call(client, "get_todo", { todo_id: portraitTodo.id });
+  const updated = await call(client, "update_todo", {
+    todo_id: portraitTodo.id,
+    expected_revision: portraitTodo.revision,
+    changes: { attachments: [portrait] },
+  });
+  expect(updated.id).toBe(portraitTodo.id);
+  expect((await call(client, "list_todos", {})).todos).toHaveLength(
+    beforeCount + 1,
+  );
+  await expect(page.locator(`[data-todo-id="${portraitTodo.id}"]`)).toHaveCount(
+    1,
+  );
+  await expect(page.locator("#todos-dialog")).toHaveAttribute(
+    "data-orientation",
+    "portrait",
+  );
+  await expect(page.locator("#todo-attachments")).toBeHidden();
+  const reference = await page.locator(".todo-reference").boundingBox();
+  const brief = await page.locator(".todo-brief").boundingBox();
+  const capture = await page.locator(".todo-capture-column").boundingBox();
+  expect(reference.x + reference.width).toBeLessThanOrEqual(brief.x + 1);
+  expect(brief.x + brief.width).toBeLessThanOrEqual(capture.x + 1);
+  expect(Math.abs(reference.y - brief.y)).toBeLessThan(1);
+  expect(Math.abs(brief.y - capture.y)).toBeLessThan(1);
+  await page.locator("#todo-comment-reference").click();
+  await page.locator("#todo-comment-text").press("Meta+Enter");
+  await expect(page.locator(".todo-comment")).toHaveCount(1);
+  await page.locator("#todo-comment-text").fill("Hold this opening");
+  await page.locator("#todo-comment-text").press("Enter");
+  await page
+    .locator("#todo-comment-text")
+    .pressSequentially("for one more second.");
+  await expect(page.locator("#todo-comment-text")).toHaveValue(
+    "Hold this opening\nfor one more second.",
+  );
+  await page.locator("#todo-comment-text").press("Meta+Enter");
+  await expect(page.locator(".todo-comment")).toHaveCount(2);
+  await expect(
+    page.locator(`[data-todo-id="${portraitTodo.id}"] .todo-item-comments`),
+  ).toHaveText("2");
+  await expect(page.locator("#todo-record")).toBeInViewport();
+  await expect(page.locator("#todo-record")).toBeEnabled();
+  await expect(page.locator("#todo-done")).toBeInViewport();
+  await page.locator("#todo-media video").evaluate((v) => v.play());
+  await expect
+    .poll(() =>
+      page.locator("#todo-media video").evaluate((v) => v.currentTime),
+    )
+    .toBeGreaterThan(0.2);
+  await page.locator("#todo-media video").evaluate((v) => v.pause());
+  const bubble = await page
+    .locator(`[data-todo-id="${portraitTodo.id}"] .todo-item-comments`)
+    .boundingBox();
+  const queueBounds = await page.locator("#todo-list").boundingBox();
+  expect(bubble.y).toBeGreaterThanOrEqual(queueBounds.y);
+  await page.screenshot({
+    path: path.join(evidence, "09-portrait-comments.png"),
+  });
+  // Older feedback still opens the exact original media, then returns to the current reference.
+  await page
+    .locator(
+      `[data-comment-id="${firstComment.comment.id}"] .todo-comment-jump`,
+    )
+    .click();
+  await expect(page.locator("#todo-reference-label")).toHaveText(
+    "Earlier reference",
+  );
+  await expect(page.locator("#todos-dialog")).toHaveAttribute(
+    "data-orientation",
+    "landscape",
+  );
+  await page.locator("#todo-back-reference").click();
+  await expect(page.locator("#todos-dialog")).toHaveAttribute(
+    "data-orientation",
+    "portrait",
+  );
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].setSize(1024, 700),
+  );
+  await expect(page.locator("#todo-record")).toBeInViewport();
+  await expect(page.locator("#todo-done")).toBeInViewport();
+  expect(
+    await page
+      .locator(".todo-workspace")
+      .evaluate((el) => el.scrollWidth > el.clientWidth),
+  ).toBe(false);
+  await page.screenshot({
+    path: path.join(evidence, "10-compact-portrait.png"),
+  });
+  // Removing the approved take clears the handoff, while earlier feedback remains readable.
+  await page.locator(`[data-todo-id="${todo.id}"]`).click();
+  const saved = await call(client, "get_todo", { todo_id: todo.id });
+  const approvedId = saved.result.id;
+  await page
+    .locator(`[data-take-id="${approvedId}"] .todo-remove-clip`)
+    .click();
+  await expect(page.locator("#todo-status")).toHaveText("Ready to review");
+  await expect(page.locator(".todo-saved-clip")).toHaveCount(1);
+  const remaining = await call(client, "get_todo", { todo_id: todo.id });
+  expect(remaining.result).toBeUndefined();
+  expect(remaining.comments[0].media.removed).toBe(true);
+  expect((await fs.stat(saved.result.camera_path)).size).toBeGreaterThan(0);
+  await page.locator("#todo-comments-tab").click();
+  await page.locator(".todo-comment-jump").first().click();
+  await expect
+    .poll(() => page.locator("#todo-media video").evaluate((v) => v.readyState))
+    .toBeGreaterThanOrEqual(2);
+  await expect(page.locator(".todo-comment-media").first()).toContainText(
+    "Removed clip",
+  );
+  await page.locator("#todo-recording-tab").click();
+  await page.locator(".todo-remove-clip").click();
+  await expect(page.locator("#todo-status")).toHaveText("Ready to record");
+  await expect(page.locator("#todo-saved-clips")).toBeHidden();
+  await expect(page.locator("#todo-done")).toBeDisabled();
+  await expect(page.locator("#todo-record")).toBeEnabled();
+  await close();
+  expect((await cli("get", todo.id)).takes).toHaveLength(0);
+  await launch();
+  await page.locator("#recording-todos").click();
+  await expect(page.locator(`[data-todo-id="${cancelled.id}"]`)).toHaveCount(0);
+  await page.locator(`[data-todo-id="${portraitTodo.id}"]`).click();
+  await expect(page.locator("#todos-dialog")).toHaveAttribute(
+    "data-orientation",
+    "portrait",
   );
   expect(errors).toEqual([]);
 });

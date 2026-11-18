@@ -38,6 +38,10 @@ Reconnect the client after updating the app/server. The MCP server and CLI work 
 4. You open **Todos**, record webcam + voice, review, and mark the chosen take done.
 5. The waiter returns `status: "done"` and `todo.result`, containing `camera_path`, `microphone_path`, `project_path`, `duration`, the approved take ID, and your notes. Claude can use the media in its existing edit or call `get_project` and the existing preview/edit/render tools on `project_path`.
 
+To revise the video or brief, call `get_todo` and then `update_todo` with the **same ID** and current revision. `changes.attachments` replaces the reference list; omit it to keep the current media, or use `[]` to clear it. CLI example: `todos update ID --revision N --attach /absolute/revised.mp4`. Do not cancel and create a new todo for a revision. Unchanged references keep their IDs; comments on replaced references retain the earlier file and timestamp.
+
+**Record** always sits beside **Mark as Done**. It enables camera and microphone if necessary and adds a new clip, including after completion. Remove individual clips from **Recorded clips**. Removing the approved clip reopens the todo; removed clips leave the active list but retain their files and comment history. Cancelled todos stay out of the app's queue. Portrait reference videos use separate video, brief, and recording/comments columns.
+
 An example instruction to Claude:
 
 > Create the draft video, then create a recording todo with the draft attached and the speaking brief. Run `todos wait <returned-id>` as a background Bash task. When I mark the take done, use the returned camera and microphone files to finish the edit. Do not mark the todo done for me.
@@ -46,7 +50,7 @@ An example instruction to Claude:
 
 ## Video comments and agent handoff
 
-Pause a reference video at the moment you want to discuss and click **Comment** below the player. For a recorded take, choose **Comment on this take** to open it in the large player. Post your comment in the **Comments** panel. Clicking a comment's timestamp returns to that exact media and position. You can filter open/resolved feedback, resolve a comment, or reopen it. Comments are also available after a recording is done.
+Pause a reference video at the moment you want to discuss and click **Comment** below the player. For a recorded take, choose **Comment on this take** to open it in the large player. Post your comment in the **Comments** panel with **⌘Enter** (or Ctrl+Enter) or the Post comment button. Enter alone adds a new line. Each queue card shows its comment count at the top left. Clicking a comment's timestamp returns to that exact media and position. You can filter open/resolved feedback, resolve a comment, or reopen it. Comments are also available after a recording is done.
 
 Each comment stores a stable media ID, a timestamp in **seconds in that original file**, text, author (`user` for app comments, `agent` for MCP/CLI comments), status and revision. These are not timestamps in a later edited timeline. Comments on images use timestamp zero. Text is limited to 5,000 characters. Reference and take files stay unchanged.
 
@@ -118,7 +122,8 @@ The packaged launcher supports the same commands without Node or this repository
 | `create_todo` | Add a brief and copy local reference attachments. |
 | `list_todos` | List all todos, optionally filtering by status. |
 | `get_todo` | Read the brief, revision, attachments, takes and approved result. |
-| `update_todo` | Edit a brief, cancel or reopen, using `expected_revision`. |
+| `update_todo` | Update the same todo's title, brief or reference attachments; cancel or reopen, using `expected_revision`. |
+| `remove_todo_take` | Remove a clip from the active takes using `expected_revision`; preserve files and comment history. |
 | `complete_todo` | Approve a saved `take_id` using `expected_revision` and optional notes. Requires the user's approval. |
 | `wait_for_todo` | Wait for done/cancelled; timeout returns `waiting`. |
 | `todo_events` | Read durable events with `after` and `limit` (maximum 500). |
@@ -127,7 +132,7 @@ The packaged launcher supports the same commands without Node or this repository
 
 The default macOS inbox is `~/Library/Application Support/Frame Studio/recording-todos`. The desktop, CLI and MCP share this location. `FRAME_DATA_DIR` changes the application profile; `OPEN_RECORD_STUDIO_TODO_DIR` explicitly changes the inbox. Set the same overrides in every process when using a separate inbox.
 
-Every take has its own `.framestudio` project. It contains an indexed `camera.mkv` with webcam + voice, `microphone.flac` for separate voice editing, and the original `camera.webm`. The MKV is a lossless remux of the recorded stream. The project uses webcam footage as its full-frame source; the reference is not baked in and does not determine the project's duration.
+Every take has its own `.framestudio` project. It contains an indexed `camera.mkv` with webcam + voice, `microphone.flac` for separate voice editing, and the original `camera.mp4` (older captures use `camera.webm`). The MKV is a lossless remux of the recorded stream. The project uses webcam footage as its full-frame source; the reference is not baked in and does not determine the project's duration.
 
 When using the separate microphone file in an external editor, mute the camera file's embedded audio to avoid doubling the voice.
 

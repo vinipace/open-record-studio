@@ -12,6 +12,12 @@ export const todoInput = {
 export const todoPatch = {
   title: todoInput.title.optional(),
   instructions: z.string().max(20000).optional(),
+  attachments: todoInput.attachments
+    .removeDefault()
+    .optional()
+    .describe(
+      "Replace the reference media on this same todo with these absolute paths. Omit to keep current attachments; use [] to clear. Previous commented media remains available.",
+    ),
   status: z.enum(["ready", "cancelled"]).optional(),
 };
 export const todoCommentInput = {

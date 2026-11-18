@@ -1,12 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
 function validateInput(input, patch = false) {
   const allowed = patch
-    ? ["title", "instructions", "status"]
+    ? ["title", "instructions", "status", "attachments"]
     : ["title", "instructions", "attachments"];
   if (
     !input ||
@@ -82,22 +82,74 @@ const alive = (pid) => {
 };
 const fail = (message, code = "INVALID_TODO") =>
   Object.assign(new Error(message), { code });
+async function fileHash(file) {
+  const hash = createHash("sha256");
+  const handle = await fs.open(file);
+  try {
+    for await (const chunk of handle.createReadStream()) hash.update(chunk);
+    return hash.digest("hex");
+  } finally {
+    await handle.close();
+  }
+}
+async function importAttachments(sources, directory, existing = []) {
+  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+  const used = new Set(),
+    attachments = [];
+  for (const source of sources) {
+    const ext = path.extname(source).toLowerCase(),
+      kind = extensions.get(ext);
+    if (!kind || !(await fs.stat(source)).isFile())
+      throw fail("Attach a local video, image, or audio file");
+    const id = randomUUID(),
+      file = path.join(directory, id + ext);
+    await fs.copyFile(source, file, fs.constants.COPYFILE_EXCL);
+    const sha256 = await fileHash(file),
+      name = path.basename(source);
+    let previous;
+    for (const candidate of existing) {
+      if (used.has(candidate.id) || candidate.name !== name) continue;
+      if ((candidate.sha256 || (await fileHash(candidate.path))) === sha256) {
+        previous = candidate;
+        break;
+      }
+    }
+    if (previous) {
+      used.add(previous.id);
+      await fs.rm(file);
+      attachments.push({ ...previous, sha256 });
+    } else attachments.push({ id, name, kind, path: file, sha256 });
+  }
+  return attachments;
+}
 function commentMedia(todo, type, id) {
   if (type === "attachment") {
-    const media = todo.attachments.find((a) => a.id === id);
+    const media = [
+      ...todo.attachments,
+      ...(todo.archived_attachments || []),
+    ].find((a) => a.id === id);
     if (media)
-      return { id, type, name: media.name, kind: media.kind, path: media.path };
+      return {
+        id,
+        type,
+        name: media.name,
+        kind: media.kind,
+        path: media.path,
+        archived: !todo.attachments.some((a) => a.id === id),
+      };
   } else if (type === "take") {
     const index = todo.takes.findIndex((t) => t.id === id);
-    const take = todo.takes[index];
+    const take =
+      todo.takes[index] || todo.removed_takes?.find((t) => t.id === id);
     if (take)
       return {
         id,
         type,
-        name: `Take ${index + 1}`,
+        name: take.name || `Take ${index + 1}`,
         kind: "video",
         path: take.camera_path,
         duration: take.duration,
+        removed: index < 0,
       };
   }
   throw fail("Comment media does not belong to this todo");
@@ -256,24 +308,11 @@ export class TodoStore {
     const values = validateInput(input);
     const id = randomUUID();
     const directory = path.join(this.directory, id, "attachments");
-    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
-    const attachments = [];
     try {
-      for (const source of values.attachments) {
-        const ext = path.extname(source).toLowerCase(),
-          kind = extensions.get(ext);
-        if (!kind || !(await fs.stat(source)).isFile())
-          throw fail("Attach a local video, image, or audio file");
-        const attachmentId = randomUUID(),
-          file = path.join(directory, attachmentId + ext);
-        await fs.copyFile(source, file, fs.constants.COPYFILE_EXCL);
-        attachments.push({
-          id: attachmentId,
-          name: path.basename(source),
-          kind,
-          path: file,
-        });
-      }
+      const attachments = await importAttachments(
+        values.attachments,
+        directory,
+      );
       return await this.transaction((data) => {
         const todo = {
           id,
@@ -299,24 +338,56 @@ export class TodoStore {
     this.requireRevision(revision);
     const patch = validateInput(changes, true);
     if (!Object.keys(patch).length) throw fail("Supply at least one change");
-    return this.transaction((data) => {
-      const todo = this.find(data, id, revision);
-      if (todo.status === "recording" && alive(todo.recording?.pid))
-        throw fail("Finish recording before changing this todo", "TODO_BUSY");
-      Object.assign(todo, patch);
-      if (patch.status) {
-        delete todo.result;
-        delete todo.completed_at;
-      }
-      this.event(data, todo, "todo.updated");
-      return publicTodo(todo);
-    });
+    const previous = this.find(await this.read(), id, revision);
+    if (previous.status === "recording" && alive(previous.recording?.pid))
+      throw fail("Finish recording before changing this todo", "TODO_BUSY");
+    const directory = path.join(
+      this.directory,
+      id,
+      "attachments",
+      randomUUID(),
+    );
+    const replacingMedia = patch.attachments !== undefined;
+    try {
+      if (replacingMedia)
+        patch.attachments = await importAttachments(
+          patch.attachments,
+          directory,
+          previous.attachments,
+        );
+      return await this.transaction((data) => {
+        const todo = this.find(data, id, revision);
+        if (todo.status === "recording" && alive(todo.recording?.pid))
+          throw fail("Finish recording before changing this todo", "TODO_BUSY");
+        if (replacingMedia) {
+          const retained = new Set(patch.attachments.map((a) => a.id));
+          (todo.archived_attachments ||= []).push(
+            ...todo.attachments.filter((a) => !retained.has(a.id)),
+          );
+        }
+        Object.assign(todo, patch);
+        if (patch.status) {
+          delete todo.result;
+          delete todo.completed_at;
+        }
+        this.event(data, todo, "todo.updated");
+        return publicTodo(todo);
+      });
+    } catch (error) {
+      if (replacingMedia)
+        await fs.rm(directory, { recursive: true, force: true });
+      throw error;
+    }
   }
   async begin(id, revision) {
     this.requireRevision(revision);
     return this.transaction(async (data) => {
       const todo = this.find(data, id, revision);
-      if (!["ready", "review", "interrupted"].includes(publicTodo(todo).status))
+      if (
+        !["ready", "review", "interrupted", "done"].includes(
+          publicTodo(todo).status,
+        )
+      )
         throw fail("This todo is not ready to record", "TODO_BUSY");
       const session = randomUUID();
       if (todo.status === "recording")
@@ -334,6 +405,8 @@ export class TodoStore {
       await fs.mkdir(directory, { recursive: true });
       todo.recording = { id: session, pid: process.pid, directory };
       todo.status = "recording";
+      delete todo.result;
+      delete todo.completed_at;
       this.event(data, todo, "todo.recording");
       return { ...todo.recording, title: todo.title };
     });
@@ -346,6 +419,7 @@ export class TodoStore {
       todo.takes.push({
         ...take,
         id: session,
+        name: `Take ${todo.takes.length + (todo.removed_takes?.length || 0) + 1}`,
         created_at: new Date().toISOString(),
       });
       todo.status = "review";
@@ -381,6 +455,30 @@ export class TodoStore {
       todo.status = "done";
       todo.completed_at = new Date().toISOString();
       this.event(data, todo, "todo.done");
+      return publicTodo(todo);
+    });
+  }
+  async removeTake(id, revision, takeId) {
+    this.requireRevision(revision);
+    return this.transaction((data) => {
+      const todo = this.find(data, id, revision);
+      if (todo.status === "recording" && alive(todo.recording?.pid))
+        throw fail("Finish recording before removing a clip", "TODO_BUSY");
+      const index = todo.takes.findIndex((take) => take.id === takeId);
+      if (index < 0) throw fail("Saved take not found");
+      todo.takes.forEach((take, i) => {
+        take.name ||= `Take ${i + 1}`;
+      });
+      const [take] = todo.takes.splice(index, 1);
+      take.name ||= `Take ${index + 1}`;
+      (todo.removed_takes ||= []).push(take);
+      if (todo.result?.id === takeId) {
+        delete todo.result;
+        delete todo.completed_at;
+        todo.status = todo.takes.length ? "review" : "ready";
+      } else if (todo.status === "review" && !todo.takes.length)
+        todo.status = "ready";
+      this.event(data, todo, "todo.take_removed", { take_id: takeId });
       return publicTodo(todo);
     });
   }
@@ -438,6 +536,10 @@ export class TodoStore {
       input.media_type,
       input.media_id,
     );
+    if (media.removed || media.archived)
+      throw fail(
+        "Choose a current reference or recorded clip for new comments",
+      );
     const duration =
       media.kind === "image"
         ? 0
@@ -451,6 +553,11 @@ export class TodoStore {
     return this.transaction((data) => {
       const todo = this.find(data, id),
         at = new Date().toISOString();
+      const currentMedia = commentMedia(todo, input.media_type, input.media_id);
+      if (currentMedia.removed || currentMedia.archived)
+        throw fail(
+          "Choose a current reference or recorded clip for new comments",
+        );
       const comment = {
         ...input,
         text: input.text.trim(),

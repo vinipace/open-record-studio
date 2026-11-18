@@ -4,7 +4,7 @@ A local macOS screen recorder and video editor. Record your screen and webcam,
 edit them on one timeline, then export a finished composition or separate,
 synchronized videos.
 
-[Download for macOS](https://github.com/vinipace/open-record-studio/releases/download/v0.4.1/Open-Record-Studio-0.4.1-macOS-arm64.dmg) · [Homebrew](#homebrew) · [All releases](https://github.com/vinipace/open-record-studio/releases) · [Editor guide](docs/guide.md) · [MCP setup](docs/mcp.md) · [MIT license](LICENSE)
+[Download for macOS](https://github.com/vinipace/open-record-studio/releases/download/v0.4.2/Open-Record-Studio-0.4.2-macOS-arm64.dmg) · [Homebrew](#homebrew) · [All releases](https://github.com/vinipace/open-record-studio/releases) · [Editor guide](docs/guide.md) · [MCP setup](docs/mcp.md) · [MIT license](LICENSE)
 
 ## Download and install
 
@@ -21,7 +21,7 @@ This installs the app, its FFmpeg media tools, and the `open-record-studio-mcp` 
 
 ### Direct download
 
-1. **[Download the DMG](https://github.com/vinipace/open-record-studio/releases/download/v0.4.1/Open-Record-Studio-0.4.1-macOS-arm64.dmg)** and drag **Open Record Studio** into **Applications**. A [ZIP download](https://github.com/vinipace/open-record-studio/releases/download/v0.4.1/Open-Record-Studio-0.4.1-macOS-arm64.zip) is also available.
+1. **[Download the DMG](https://github.com/vinipace/open-record-studio/releases/download/v0.4.2/Open-Record-Studio-0.4.2-macOS-arm64.dmg)** and drag **Open Record Studio** into **Applications**. A [ZIP download](https://github.com/vinipace/open-record-studio/releases/download/v0.4.2/Open-Record-Studio-0.4.2-macOS-arm64.zip) is also available.
 2. Install the media tools with [Homebrew](https://brew.sh): `brew install ffmpeg`.
 3. Open **Open Record Studio** from Applications.
 

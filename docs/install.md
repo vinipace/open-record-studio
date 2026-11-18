@@ -5,7 +5,7 @@ You do not need Node.js, Xcode, or the source checkout to run it.
 
 ## Download
 
-1. [Download the macOS DMG](https://github.com/vinipace/open-record-studio/releases/download/v0.4.1/Open-Record-Studio-0.4.1-macOS-arm64.dmg), or choose another version from [Releases](https://github.com/vinipace/open-record-studio/releases).
+1. [Download the macOS DMG](https://github.com/vinipace/open-record-studio/releases/download/v0.4.2/Open-Record-Studio-0.4.2-macOS-arm64.dmg), or choose another version from [Releases](https://github.com/vinipace/open-record-studio/releases).
 2. Open the disk image and drag **Open Record Studio** into **Applications**.
 3. Install the media tools with [Homebrew](https://brew.sh): `brew install ffmpeg`.
 4. Open the app from Applications.

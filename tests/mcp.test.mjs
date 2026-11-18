@@ -44,7 +44,7 @@ after(async () => {
 test("MCP stdio discovery works with legacy and modern clients", async () => {
   const tools = (await client.listTools()).tools;
   report.tools = tools.map((t) => t.name);
-  assert.equal(tools.length, 26);
+  assert.equal(tools.length, 27);
   assert(
     tools.find((t) => t.name === "update_style").inputSchema.properties.changes,
   );
@@ -55,7 +55,7 @@ test("MCP stdio discovery works with legacy and modern clients", async () => {
   assert(tools.find((t) => t.name === "get_preview").annotations.readOnlyHint);
   const modern = await connectMcp("auto");
   try {
-    assert.equal((await modern.client.listTools()).tools.length, 26);
+    assert.equal((await modern.client.listTools()).tools.length, 27);
   } finally {
     await modern.client.close();
   }
